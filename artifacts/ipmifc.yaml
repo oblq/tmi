@@ -12,7 +12,7 @@ ipmi_cmd: ipmitool # for remote control use: `ipmitool -I lanplus -U '<ipmi_user
 # - Custom   = "custom"
 # Custom mode will set native FullMode under the hood,
 # it will also enable control with the below controllers.
-# Editing the ipmi zones duty-cycle without setting the full mode first will non work.
+# Editing the ipmi zones duty-cycle without setting 'custom' (ipmi Full mode behind the scenes) first will non work.
 fan_mode: custom
 
 # Number of seconds to sleep between checks.
