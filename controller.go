@@ -65,6 +65,10 @@ func (c *controller) getNeededDutyCycle(ipmiCMD string) (zonesDutyCycles map[str
 		if err != nil {
 			return
 		}
+		if temp == "" {
+			err = fmt.Errorf("controller 'temp_cmd' returned an empty string: `%s`", c.TempCmd)
+			return
+		}
 	}
 
 	temp = strings.Trim(temp, " .")
