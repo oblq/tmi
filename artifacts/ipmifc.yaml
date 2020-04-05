@@ -44,36 +44,36 @@ controllers:
         72: 100
 
 
-  - name: GPU
-    # Direct command to extract NVIDIA GPU temp here replace the `temp_ipmi_entity` var.
-    # Should return a string representing a valid float number,
-    # leading and trailing spaces will be automatically removed.
-    # If both `temp_cmd` and `temp_ipmi_entity` are present `temp_cmd` takes precedence.
-    temp_cmd: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
-    min_temp_change: 2
-    targets:
-      0x00:
-        0: 20
-        35: 30
-        50: 50
-        65: 75
-        80: 100
+#  - name: GPU
+#    # Direct command to extract NVIDIA GPU temp here replace the `temp_ipmi_entity` var.
+#    # Should return a string representing a valid float number,
+#    # leading and trailing spaces will be automatically removed.
+#    # If both `temp_cmd` and `temp_ipmi_entity` are present `temp_cmd` takes precedence.
+#    temp_cmd: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
+#    min_temp_change: 2
+#    targets:
+#      0x00:
+#        0: 20
+#        35: 30
+#        50: 50
+#        65: 75
+#        80: 100
 
 
-  - name: PCH
-    temp_ipmi_entity: 7.1
-    min_temp_change: 2
-    # Control multiple target zones with the same sensor...
-    targets:
-      0x00:
-        0: 20
-        54: 30
-        60: 50
-        66: 75
-        72: 100
-      0x01:
-        0: 14
-        54: 30
-        60: 54
-        66: 86
-        72: 100
+#  - name: PCH
+#    temp_ipmi_entity: 7.1
+#    min_temp_change: 2
+#    # Control multiple target zones with the same sensor...
+#    targets:
+#      0x00:
+#        0: 20
+#        54: 30
+#        60: 50
+#        66: 75
+#        72: 100
+#      0x01:
+#        0: 14
+#        54: 30
+#        60: 54
+#        66: 86
+#        72: 100
