@@ -56,9 +56,17 @@ func (c *controller) getNeededDutyCycle(ipmiCMD string) (zonesDutyCycles map[str
 		if err != nil {
 			return
 		}
+		if temp == "" {
+			err = fmt.Errorf("entityID not found: %s", c.TempIpmiEntity)
+			return
+		}
 	} else {
 		temp, err = exec.CommandPipe(c.TempCmd)
 		if err != nil {
+			return
+		}
+		if temp == "" {
+			err = fmt.Errorf("controller 'temp_cmd' returned an empty string: `%s`", c.TempCmd)
 			return
 		}
 	}

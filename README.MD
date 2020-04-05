@@ -24,9 +24,11 @@ sudo make install_linux path=/opt/ipmifc
 ```
 This will:
 - Build the executable for the current platform to the specified path (eg.:/opt/ipmifc).
-- Copy the config files to the same path.
+- Copy the config files to the same path (will not be overwritten if exist).
 - Install `ipmitool` if not already installed.
 - Setup a systemd service (ipmifc), enable and start it. 
+
+![service](ipmifc.png)
 
 At this point you just have to play with the configs ([`ipmifc.yaml`](./artifacts/ipmifc.yaml) and [`ipmifc_thresholds.yaml`](./artifacts/ipmifc_thresholds.yaml)) which has been copied in '/opt/ipmifc'.  
 They will be reloaded automatically after saving changes, just wait for the next check cycle (check_interval is defined in the config itself).  
@@ -37,11 +39,6 @@ journalctl -f -u ipmifc
 
 #### Other platforms:
 1. Ensure target machine has `ipmitool` installed.  
-    On Linux it can be installed via your Linux distribution's package manager.
-    ```sh
-    sudo apt install ipmitool
-    ```
-    
     On OSX use brew:
     ```bash
     brew install ipmitool
