@@ -10,7 +10,8 @@ It has only been tested on a SuperMicro X11SPA-TF motherboard running Ubuntu 18.
 **USE AT YOUR OWN RISK**.
 
 ## Requirements
-Precompiled executable are inside artifacts dir, config files must reside in the working dir if you use these ...or you can build it for yourself if you have `go` installed.
+Precompiled executable are inside artifacts dir, config files must reside in the working dir if you use these ...or you can build it for yourself if you have `go` installed.  
+
 Compile-time, optional: `go` language.  
 Run-time, mandatory: `ipmitool`. 
 
@@ -59,7 +60,8 @@ journalctl -f -u ipmifc
 Two config files are required for `ipmifc` to run.  
 Anytime you save some changes the configs are hot-reloaded (separately).  
 The configuration options are documented in the sample files:  
-#####[`ipmifc_thresholds.yaml`](./artifacts/ipmifc_thresholds.yaml):   
+
+[`ipmifc_thresholds.yaml`](./artifacts/ipmifc_thresholds.yaml):   
 
 ```yaml
 fan_thresholds:
@@ -83,7 +85,8 @@ fan_thresholds:
     upper: [2100, 2200, 2300]
 ```
 
-#####[`ipmifc.yaml`](./artifacts/ipmifc.yaml):
+[`ipmifc.yaml`](./artifacts/ipmifc.yaml):  
+
 ```yaml
 ipmi_cmd: ipmitool # for remote control use: `ipmitool -I lanplus -U '<ipmi_user>' -P '<ipmi_password>' -H <remote_ip>`
 
