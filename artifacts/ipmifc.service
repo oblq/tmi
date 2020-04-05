@@ -1,0 +1,16 @@
+# add in /etc/systemd/system
+
+[Unit]
+Description=IPMI fan control
+StartLimitIntervalSec=0
+
+[Service]
+Restart=always
+RestartSec=1
+User=root
+ExecStart=<path>
+# Set optimal fan mode
+ExecStopPost=/usr/bin/ipmitool raw 0x30 0x45 0x01 0x02
+
+[Install]
+WantedBy=multi-user.target

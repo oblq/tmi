@@ -1,0 +1,29 @@
+fan_thresholds:
+#  # Grab the fan name running `sudo ipmitool sensor`.
+#  FAN1:
+#    # description is arbitrary, use what you prefer
+#    description: pump1
+#    # lower thresholds: Non-Recoverable, Critical and Non-Critical
+#    lower: [0, 300, 500]
+#    # upper thresholds: Non-Critical, Critical and Non-Recoverable
+#    upper: [4900, 5000, 5100]
+#
+#  FAN2:
+#    description: pump2
+#    lower: [0, 300, 500]
+#    upper: [4900, 5000, 5100]
+#
+#  FAN3:
+#    description: NF-A14 (top)
+#    lower: [0, 100, 200]
+#    upper: [1600, 1700, 1800]
+#
+#  FAN4:
+#    description: NF-A12 (side)
+#    lower: [0, 300, 400]
+#    upper: [2100, 2200, 2300]
+#
+#  FANA:
+#    description: Riing Plus 200 mm (front)
+#    lower: [0, 200, 300]
+#    upper: [1000, 1100, 1200]
