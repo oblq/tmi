@@ -106,10 +106,6 @@ func (ipmifc *IPMIFC) LoadConfig() error {
 	ipmifc.StopMonitoring()
 
 	switch ipmifc.FanMode {
-	case fanModeStandard, fanModeFull, fanModeOptimal, fanModeHeavyIO:
-		ipmifc.SetFanMode(ipmifc.FanMode)
-		ipmifc.mutex.Unlock()
-
 	case fanModeCustom:
 		ipmifc.mutex.Unlock()
 
@@ -120,6 +116,7 @@ func (ipmifc *IPMIFC) LoadConfig() error {
 		ipmifc.StartMonitoring()
 
 	default:
+		ipmifc.SetFanMode(ipmifc.FanMode)
 		ipmifc.mutex.Unlock()
 	}
 

@@ -88,18 +88,21 @@ fan_thresholds:
 ipmi_cmd: ipmitool # for remote control use: `ipmitool -I lanplus -U '<ipmi_user>' -P '<ipmi_password>' -H <remote_ip>`
 
 # These settings may vary...
+# It is possible to use arbitrary values here, 
+# I just reported the ones which are supported by my hardware.
+# This is the value passed directly to the IPMI raw command, so also hex values are accepted. 
 #
-# IPMI modes:
-# - Standard = "00"
-# - Full     = "01"
-# - Optimal  = "02"
-# - HeavyIO  = "04"
+# IPMI known fan modes :
+# - Standard = 0 or 0x00 
+# - Full     = 1 or 0x01 
+# - Optimal  = 2 or 0x02 
+# - HeavyIO  = 4 or 0x04 
 #
-# Custom mode:
-# - Custom   = "custom"
+# IPMIFC custom mode:
+# - Custom   = custom
 # Custom mode will set native FullMode under the hood,
 # it will also enable control with the below controllers.
-# Editing the ipmi zones duty-cycle without setting the full mode first will non work.
+# Editing the ipmi zones duty-cycle without setting 'custom' (ipmi Full mode behind the scenes) first will non work.
 fan_mode: custom
 
 # Number of seconds to sleep between checks.
