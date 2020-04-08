@@ -2,8 +2,8 @@
 .PHONY: build
 build:
 	/usr/local/go/bin/go build -i -ldflags "-X main.Path=$(path)" -o $(path)/ipmifc . ; \
-    cp -n ./artifacts/ipmifc.yaml $(path)/ipmifc.yaml && chmod 777 $(path)/ipmifc.yaml; \
-    cp -n ./artifacts/ipmifc_thresholds.yaml $(path)/ipmifc_thresholds.yaml && chmod 777 $(path)/ipmifc_thresholds.yaml;
+    cp -n ./artifacts/ipmifc.yaml $(path)/ipmifc.yaml && chmod 666 $(path)/ipmifc.yaml; \
+    cp -n ./artifacts/ipmifc_thresholds.yaml $(path)/ipmifc_thresholds.yaml && chmod 666 $(path)/ipmifc_thresholds.yaml;
 
 # !!run with sudo
 ## install_linux	: (usage: sudo make install_linux path=/opt/ipmifc) run build, copy_files, install `ipmitool` and create a systemctl service to run the application as a daemon.

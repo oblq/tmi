@@ -62,7 +62,7 @@ func New(path string) (ipmifc *IPMIFC, err error) {
 	ipmifc = &IPMIFC{}
 
 	ipmifc.configPath = filepath.Join(path, "ipmifc.yaml")
-	ipmifc.configThresholdsPath = filepath.Join(path, "/ipmifc_thresholds.yaml")
+	ipmifc.configThresholdsPath = filepath.Join(path, "ipmifc_thresholds.yaml")
 
 	if ipmifc.configStat, err = os.Stat(ipmifc.configPath); err != nil {
 		return

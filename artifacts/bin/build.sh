@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 # Build executables for multiple platforms.
-# https://www.digitalocean.com/community/tutorials/how-to-build-go-executables-for-multiple-platforms-on-ubuntu-16-04
 
 package=$1
 outpath=$2
@@ -73,5 +72,4 @@ done
 #   windows	                            386
 #   windows	                            amd64
 
-# Warning: Cross-compiling executables for Android requires the Android NDK,
-# and some additional setup which is beyond the scope of this tutorial.
+# Warning: Cross-compiling executables for Android requires the Android NDK and some additional setup.
