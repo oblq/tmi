@@ -1,25 +1,27 @@
 package main
 
 import (
-	"fmt"
 	"math"
-	"strconv"
-	"strings"
-
-	"github.com/oblq/ipmifc/internal/exec"
+	"sort"
+	"sync"
 )
 
-const fallbackDutyCycle = 50 // 50%
+type targetData struct {
+	dutyCycle          uint8
+	lastUpdatedTemp    float64
+	sortedMappingTemps []float64
+}
 
+// commanderpro, ipmi, cli
 type controller struct {
 	Name string `yaml:"name"`
 
-	// TempCmd is a direct command to get a temp in number format,
-	// take precedence over 'temp' parameter.
-	TempCmd string `yaml:"temp_cmd"`
-
-	// TempIpmiEntity is the ipmi entityID to look for in `ipmitool sdr list full` response.
-	TempIpmiEntity string `yaml:"temp_ipmi_entity"`
+	// commanderpro, ipmi, cli
+	// commanderpro: sensor_channel (uint8 as string), ipmi: entityID, cli: custom_command
+	Temp struct {
+		Method string
+		Arg    string
+	} `yaml:"temp"`
 
 	// MinTempChange is the minimum necessary change (in °C)
 	// from the last duty cycle update to actually cause another update.
@@ -27,66 +29,57 @@ type controller struct {
 
 	// Targets are the ipmi zone target with their temp/duty-cycle mapping.
 	// cpu_zone: 0x00, io_zone: 0x01.
+	// target : channel : mappings
 	Targets map[string]map[float64]uint8 `yaml:"targets"`
 
-	curTemp               float64
-	lastTemp              float64
-	zonesNeededDutyCycles map[string]uint8
+	// runtime vars -----------------------------------
+
+	once sync.Once
+
+	// <target:channel> : targetData
+	targetsData map[string]*targetData
 }
 
-// fallbackDutyCycle is returned on error
-func (c *controller) getNeededDutyCycle(ipmiCMD string) (zonesDutyCycles map[string]uint8, err error) {
+// Calculate the needed duty-cycle for any target.
+// Takes in consideration the last
+// measured temp before the last update.
+func (c *controller) getNeededDutyCycles(curTemp float64) map[string]*targetData {
+	// prepare
+	c.once.Do(func() {
+		c.targetsData = make(map[string]*targetData)
 
-	if c.zonesNeededDutyCycles == nil {
-		c.zonesNeededDutyCycles = make(map[string]uint8)
-	}
+		for target, mappings := range c.Targets {
 
-	var temp string
+			temps := make([]float64, 0)
+			for t := range mappings {
+				temps = append(temps, t)
+			}
+			sort.Float64s(temps)
 
-	// to return with errors...
-	zonesDutyCycles = make(map[string]uint8)
-	for zone := range c.Targets {
-		zonesDutyCycles[zone] = fallbackDutyCycle
-	}
-
-	if c.TempCmd == "" {
-		cmdString := fmt.Sprintf("%s sdr entity %s | cut -d '|' -f 5 | cut -d ' ' -f2",
-			ipmiCMD, c.TempIpmiEntity)
-		temp, err = exec.CommandPipe(cmdString)
-		if err != nil {
-			return
+			c.targetsData[target] = &targetData{
+				dutyCycle:          0,
+				lastUpdatedTemp:    0,
+				sortedMappingTemps: temps,
+			}
 		}
-		if temp == "" {
-			err = fmt.Errorf("entityID not found: %s", c.TempIpmiEntity)
-			return
-		}
-	} else {
-		temp, err = exec.CommandPipe(c.TempCmd)
-		if err != nil {
-			return
-		}
-		if temp == "" {
-			err = fmt.Errorf("controller 'temp_cmd' returned an empty string: `%s`", c.TempCmd)
-			return
-		}
-	}
+	})
 
-	temp = strings.Trim(temp, " .")
-	c.curTemp, err = strconv.ParseFloat(temp, 64)
-	if err != nil {
-		return
-	}
+	for target, mappings := range c.Targets {
 
-	if math.Abs(c.curTemp-c.lastTemp) >= c.MinTempChange {
-		for zone, curveMappings := range c.Targets {
-			for temp, dc := range curveMappings {
-				if c.curTemp >= temp {
-					c.zonesNeededDutyCycles[zone] = dc
-					c.lastTemp = c.curTemp
+		lastTemp := c.targetsData[target].lastUpdatedTemp
+		if math.Abs(curTemp-lastTemp) >= c.MinTempChange {
+
+			c.targetsData[target].lastUpdatedTemp = curTemp
+
+			for _, temp := range c.targetsData[target].sortedMappingTemps {
+
+				if temp > curTemp {
+					break
 				}
+				c.targetsData[target].dutyCycle = mappings[temp]
 			}
 		}
 	}
 
-	return c.zonesNeededDutyCycles, nil
+	return c.targetsData
 }

@@ -1,0 +1,89 @@
+#fan_mode:
+#  0x00: 0x00
+#  0x01: 0x00
+#  0x02: 0x00
+#  0x03: 0x00
+#  0x04: 0x00
+#  0x05: 0x00
+
+# Define external temp extractors to be used in the configurations below.
+external_temps:
+  cpu:
+    method: ipmi
+    arg: 3.1
+
+  gpu:
+    method: cli
+    arg: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
+
+  reservoir:
+    method: commanderpro
+    arg: 0x00
+
+# Set led count per channel.
+led_count_per_ch:
+  0x00: 30 # 4 for solarity, the others for thermaltake front fans
+  0x01: 7 # ek vector, 7 leds
+
+# Test temp variations to check the picked colors for mode 0x05.
+# Temp changes will be sent to both the two led channels of
+# the commander pro.
+temp_shift_test:
+  enabled: false
+  ch: 0x01
+  from: 28
+  to: 50
+
+# Configure leds.
+led_group_configs:
+  cpu:
+    ledch: 0x00
+    ledoffset: 0
+    ledcount: 1
+    ledmode: 0x05 # 0x05, 0x02, 0x03, 0x01, 0x04, 0x06
+    ledspeed: 0x01
+    leddirection: 0x01
+    ledstyle: 0x00
+    color1: {r: 27, g: 133, b: 44}
+    color2: {r: 255, g: 127, b: 0}
+    color3: {r: 255, g: 0, b: 0}
+    temp1: 28
+    temp2: 39
+    temp3: 50
+    externaltemp: cpu
+
+  reservoir:
+    ledch: 0x00
+    ledoffset: 1
+    ledcount: 1
+    ledmode: 0x05 # 0x05, 0x02, 0x03, 0x01, 0x04, 0x06
+    ledspeed: 0x01
+    leddirection: 0x01
+    ledstyle: 0x00
+    color1: {r: 27, g: 133, b: 44}
+    color2: {r: 255, g: 127, b: 0}
+    color3: {r: 255, g: 0, b: 0}
+    temp1: 28
+    temp2: 39
+    temp3: 50
+    externaltemp: reservoir
+
+  gpu:
+    ledch: 0x01
+    ledoffset: 0
+    ledcount: 7
+    ledmode: 0x05 # 0x05, 0x02, 0x03, 0x01, 0x04, 0x06
+    ledspeed: 0x01
+    leddirection: 0x01
+    ledstyle: 0x00
+    color1: {r: 27, g: 133, b: 44}
+    color2: {r: 255, g: 127, b: 0}
+    color3: {r: 255, g: 0, b: 0}
+    temp1: 28
+    temp2: 39
+    temp3: 50
+    externaltemp: gpu
+
+# green {r: 27, g: 133, b: 44}
+# pink {r: 227, g: 33, b: 44}
+# yellow {r: 255, g: 127, b: 0}

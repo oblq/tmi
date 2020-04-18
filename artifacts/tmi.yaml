@@ -1,0 +1,105 @@
+# disable the modules that you don't use.
+active_modules:
+  ipmi: true
+  commanderpro: true
+
+# Number of seconds to sleep between checks.
+# Check configuration changes and sensors data every x seconds.
+check_interval: 6
+
+# Create a targets map to be used as reference inside the controllers configuration below.
+# <arbitrary_name>: <fan_controller>.<fan_controller_channel>
+targets_map:
+  pump: ipmi.0
+  side: commanderpro.0
+  top: commanderpro.1
+  front: commanderpro.2
+  rear: commanderpro.3
+
+controllers:
+
+  # name is arbitrary, will be printed in logs.
+  - name: CPU
+    # The minimum change in °C from the last update to actually cause another fan speed change.
+    min_temp_change: 4
+    # IPMI sensor entityID to look for.
+    # Get the ipmi sensor entityID with: `sudo ipmitool sdr elist full` at the fourth column in result.
+    # ... or with: `sudo ipmitool sensor get <sensor_id>` (eg.: sudo ipmitool sensor get 'CPU Temp')
+    temp:
+      # commanderpro, ipmi, cli
+      method: ipmi
+      # commanderpro: sensor_channel (uint8 as string), ipmi: entityID, cli: custom_command
+      arg: 3.1
+    # Control multiple target zones with the same sensor...
+    targets:
+      pump:
+        0:  30
+        36: 50
+        54: 72
+        60: 100
+      side:
+        0: 0
+        35: 30
+        45: 50
+        55: 75
+        65: 100
+      top:
+        0: 18
+        35: 30
+        45: 50
+        55: 75
+        65: 100
+
+  - name: GPU
+    min_temp_change: 2
+    # CLI command to extract NVIDIA GPU temp.
+    # Should return a string representing a valid float number,
+    # leading and trailing spaces will be automatically removed.
+    temp:
+      method: cli
+      arg: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
+    targets:
+      pump:
+        0: 30
+        45: 50
+        55: 75
+        65: 100
+      side:
+        0: 0
+        35: 30
+        45: 50
+        55: 75
+        65: 100
+      top:
+        0: 18
+        35: 30
+        45: 50
+        55: 75
+        65: 100
+
+  - name: PCH
+    min_temp_change: 3
+    # temp_corsair_channel grab the temperature from a channel of the corsair commander pro
+    temp:
+      method: ipmi
+      arg: 7.1
+    targets:
+      side:
+        0: 0
+        53: 34
+        56: 50
+        63: 100
+      top:
+        0: 0
+        53: 34
+        56: 50
+        63: 100
+      front:
+        0: 34
+        56: 70
+        63: 100
+      rear:
+        0: 18
+        53: 30
+        56: 50
+        63: 100

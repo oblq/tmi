@@ -1,51 +1,64 @@
-# ipmifc (ipmi fan control)
+# TMI (Thermal Management Interface)
 
-`ipmifc` is a simple program to remotely (or locally) control fan speeds (and thresholds) on machines that use the Intelligent Platform Management Interface (IPMI) based on the readings of temperature sensors (CPU, GPU or any sensor you can grab via command line).  
+`tmi` is a simple program to remotely (or locally) control fan/pump speeds using IPMI (Intelligent Platform Management Interface) and/or a Corsair Commander Pro, based on the readings of temperature sensors (CPU, GPU or any sensor you can grab via command line).  
 Simply install it and tweaks config files as needed, they will be hot-reloaded automatically after saving changes.
 
-#### WARNING
+>#### WARNING
+>This project is born because I wanted to handle the thermal/acoustic behaviour of my personal workstation so it is not intended to be used in production environments.  
 This program is of public domain and provided as-is, without any warranty whatsoever.  
 It has only been tested on a SuperMicro X11SPA-TF motherboard running Ubuntu 18.04 and 19.10.  
-`ipmifc` sends raw IPMI commands to your IPMI device and may not work on your platform without some modifications.  
+`tmi` sends raw IPMI commands to your IPMI device and to the Commander Pro and may not work on your platform without some modifications.  
 **USE AT YOUR OWN RISK**.
 
-## Requirements
-Precompiled executable are inside artifacts dir, config files must reside in the working dir if you use these ...or you can build it for yourself if you have `go` installed.  
+## Features
+- control ipmi fan zones duty-cycle.
+- control ipmi fans thresholds.
+- get ipmi temperature from sensors.
+- control Commander Pro fans duty-cycle.
+- control Commander Pro leds (basic control).
+- get Commander Pro temp from sensors.
+- get temp from any custom CLI command.
 
-Compile-time, optional: `go` language.  
-Run-time, mandatory: `ipmitool`. 
+
+## Requirements
+Precompiled executable are inside artifacts dir, config files must reside in the working dir if you use these ...or you can build it for yourself if you have `go` installed using the included makefile for convenience.  
+
+
+- `ipmitool` to use IPMI. 
+- `libusb-1.0` to communicate with the Corsair Commander Pro. 
 
 ## Quick start
 
 #### Ubuntu / Debian:
-Simply use the makefile and adjust the two config files according to your needs:
+Simply use the makefile and adjust the three config files according to your needs:
 ```sh
-sudo make install_linux path=/opt/ipmifc
+sudo make install_linux path=/opt/tmi
 ```
 This will:
-- Build the executable for the current platform to the specified path (eg.:/opt/ipmifc).
+- Build the executable for the current platform to the specified path (eg.:/opt/tmi).
 - Copy the config files to the same path (will not be overwritten if exist).
 - Install `ipmitool` if not already installed.
-- Setup a systemd service (ipmifc), enable and start it. 
+- Setup a systemd service (tmi), enable and start it. 
 
-![service](ipmifc.png)
+![service](tmi.png)
 
-At this point you just have to play with the configs ([`ipmifc.yaml`](./artifacts/ipmifc.yaml) and [`ipmifc_thresholds.yaml`](./artifacts/ipmifc_thresholds.yaml)) which has been copied in '/opt/ipmifc'.  
-They will be reloaded automatically after saving changes, just wait for the next check cycle (check_interval is defined in the config itself).  
-You can monitor `ipmifc` status at any time with:
+At this point you just have to play with the configs ([`tmi.yaml`](artifacts/tmi.yaml), [`ipmi.yaml`](artifacts/ipmi.yaml) and [`commanderpro.yaml`](artifacts/commanderpro.yaml)) which has been copied in '/opt/tmi'.  
+They will be reloaded automatically after saving changes, just wait for the next check cycle (check_interval is defined in the tmi.yaml config itself).  
+You can monitor `tmi` status at any time with:
 ````bash
-journalctl -f -u ipmifc
+journalctl -f -u tmi
 ````
 
 #### Other platforms:
-1. Ensure target machine has `ipmitool` installed.  
+1. Ensure target machine has `ipmitool` and `libusb` installed.  
     On OSX use brew:
     ```bash
     brew install ipmitool
+    brew install libusb
     ```
 2. If you have `go` installed build the executable and copy the configs to the desired path.
     ```sh
-    sudo make build path=/opt/ipmifc
+    sudo make build path=/opt/tmi
     ```
    ...otherwise manually copy the right precompiled executable and both config files in the same destination path.
 3. Run the executable as a daemon.
@@ -54,113 +67,106 @@ journalctl -f -u ipmifc
 
 ## Configuration & Usage
 
-Two config files are required for `ipmifc` to run.  
+Three config files are required for `tmi` to run.  
 Anytime you save some changes the configs are hot-reloaded (separately).  
-The configuration options are documented in the sample files:  
+The configuration options are documented in the sample files.
 
-[`ipmifc_thresholds.yaml`](./artifacts/ipmifc_thresholds.yaml):   
-
-```yaml
-fan_thresholds:
-  # Grab the fan name running `sudo ipmitool sensor`.
-  FAN1:
-    # description is arbitrary, use what you prefer
-    description: pump
-    # lower thresholds: Non-Recoverable, Critical and Non-Critical
-    lower: [0, 300, 500]
-    # upper thresholds: Non-Critical, Critical and Non-Recoverable
-    upper: [4900, 5000, 5100]
-
-  FAN3:
-    description: NF-A14 (top)
-    lower: [0, 100, 200]
-    upper: [1600, 1700, 1800]
-
-  FAN4:
-    description: NF-A12 (side)
-    lower: [0, 300, 400]
-    upper: [2100, 2200, 2300]
-```
-
-[`ipmifc.yaml`](./artifacts/ipmifc.yaml):  
+[`tmi.yaml`](artifacts/tmi.yaml):  
 
 ```yaml
-ipmi_cmd: ipmitool # for remote control use: `ipmitool -I lanplus -U '<ipmi_user>' -P '<ipmi_password>' -H <remote_ip>`
-
-# These settings may vary...
-# It is possible to use arbitrary values here, 
-# I just reported the ones which are supported by my hardware.
-# This is the value passed directly to the IPMI raw command, so also hex values are accepted. 
-#
-# IPMI known fan modes :
-# - Standard = 0 or 0x00 
-# - Full     = 1 or 0x01 
-# - Optimal  = 2 or 0x02 
-# - HeavyIO  = 4 or 0x04 
-#
-# IPMIFC custom mode:
-# - Custom   = custom
-# Custom mode will set native FullMode under the hood,
-# it will also enable control with the below controllers.
-# Editing the ipmi zones duty-cycle without setting 'custom' (ipmi Full mode behind the scenes) first will non work.
-fan_mode: custom
+# disable the modules that you don't use.
+active_modules:
+  ipmi: true
+  commanderpro: true
 
 # Number of seconds to sleep between checks.
 # Check configuration changes and sensors data every x seconds.
-check_interval: 8
+check_interval: 6
 
-# `fan_mode` must be "custom" in order for this to work.
+# Create a targets map to be used as reference inside the controllers configuration below.
+# <arbitrary_name>: <fan_controller>.<fan_controller_channel>
+targets_map:
+  pump: ipmi.0
+  side: commanderpro.0
+  top: commanderpro.1
+  front: commanderpro.2
+  rear: commanderpro.3
+
 controllers:
 
   # name is arbitrary, will be printed in logs.
   - name: CPU
+    # The minimum change in °C from the last update to actually cause another fan speed change.
+    min_temp_change: 4
     # IPMI sensor entityID to look for.
     # Get the ipmi sensor entityID with: `sudo ipmitool sdr elist full` at the fourth column in result.
     # ... or with: `sudo ipmitool sensor get <sensor_id>` (eg.: sudo ipmitool sensor get 'CPU Temp')
-    temp_ipmi_entity: 3.1
-    # The minimum change in °C from the last update to actually cause another fan speed change.
-    min_temp_change: 2
-    # The targets that we want to control by this sensor.
-    # Usually cpu zone: 0x00, i/o zone: 0x01.
-    targets:
-      0x00:
-        # Define a map for every target zone with temp (°C) and fans duty-cycle (%).
-        0: 20
-        36: 24
-        42: 32
-        60: 72
-        72: 100
-
-
-  - name: GPU
-    # Direct command to extract NVIDIA GPU temp here replace the `temp_ipmi_entity` var.
-    # Should return a string representing a valid float number,
-    # leading and trailing spaces will be automatically removed.
-    # If both `temp_cmd` and `temp_ipmi_entity` are present `temp_cmd` takes precedence.
-    temp_cmd: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
-    min_temp_change: 2
-    targets:
-      0x00:
-        0: 20
-        35: 30
-        50: 50
-        65: 75
-        80: 100
-
-
-  - name: PCH
-    temp_ipmi_entity: 7.1
-    min_temp_change: 2
+    temp:
+      # commanderpro, ipmi, cli
+      method: ipmi
+      # commanderpro: sensor_channel (uint8 as string), ipmi: entityID, cli: custom_command
+      arg: 3.1
     # Control multiple target zones with the same sensor...
     targets:
-      0x00:
-        0: 20
-        60: 50
-        72: 100
-      0x01:
-        0: 14
-        54: 30
-        60: 54
-        66: 86
-        72: 100
+      pump:
+        0:  30
+        36: 50
+        54: 72
+        60: 100
+      side:
+        0: 0
+        35: 30
+        45: 50
+        55: 75
+        65: 100
+      top:
+        0: 18
+        35: 30
+        45: 50
+        55: 75
+        65: 100
+
+  - name: GPU
+    min_temp_change: 2
+    # CLI command to extract NVIDIA GPU temp.
+    # Should return a string representing a valid float number,
+    # leading and trailing spaces will be automatically removed.
+    temp:
+      method: cli
+      arg: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
+    targets:
+      pump:
+        0: 30
+        45: 50
+        55: 75
+        65: 100
+      side:
+        0: 0
+        35: 30
+        45: 50
+        55: 75
+        65: 100
+      top:
+        0: 18
+        35: 30
+        45: 50
+        55: 75
+        65: 100
+
+  - name: PCH
+    min_temp_change: 3
+    # temp_corsair_channel grab the temperature from a channel of the corsair commander pro
+    temp:
+      method: ipmi
+      arg: 7.1
+    targets:
+      front:
+        0: 34
+        56: 70
+        63: 100
+      rear:
+        0: 18
+        53: 30
+        56: 50
+        63: 100
 ```

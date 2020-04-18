@@ -1,12 +1,15 @@
-package exec
+package cli
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 )
+
+type Cli struct{}
 
 func Command(cmdString string) (string, error) {
 	nameCmd := strings.SplitN(cmdString, " ", 2)
@@ -50,4 +53,27 @@ func CommandPipe(cmdString string) (string, error) {
 
 	out := strings.TrimSuffix(stout.String(), "\n")
 	return out, nil
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+// module interface implementation
+func (cli Cli) Name() string {
+	return "cli"
+}
+
+// tempExtractor interface implementation
+func (cli Cli) GetTemp(cmd string) (temp float64, err error) {
+	var tString string
+	tString, err = CommandPipe(cmd)
+	if err != nil {
+		return
+	}
+	if tString == "" {
+		err = fmt.Errorf("controller 'temp_cmd' returned an empty string: `%s`", cmd)
+		return
+	}
+
+	tString = strings.Trim(tString, " .")
+	return strconv.ParseFloat(tString, 64)
 }

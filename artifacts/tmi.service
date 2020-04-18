@@ -1,7 +1,7 @@
 # add in /etc/systemd/system
 
 [Unit]
-Description=IPMI fan control
+Description=Thermal Management Interface (TMI)
 StartLimitIntervalSec=0
 
 [Service]
