@@ -4,7 +4,7 @@
 Simply install it and tweaks config files as needed, they will be hot-reloaded automatically after saving changes.
 
 #### Disclaimer
-> __WARNING__: ***tmi*** is not an official Corsair product. Corsair and Corsair Link are trademarks or registered trademarks of Corsair Components, Inc. The trademark holders are not affiliated with the maker of this product and do not endorse this product.  
+> __WARNING__: ***tmi*** is not an official Corsair product. Corsair and Corsair Commander Pro are trademarks or registered trademarks of Corsair Components, Inc. The trademark holders are not affiliated with the maker of this product and do not endorse this product.  
 This project is born because I wanted to handle the thermal/acoustic behaviour of my personal workstation so it is not intended to be used in production environments.  
 This program is of public domain and provided as-is, without any warranty whatsoever.  
 It has only been tested on a SuperMicro X11SPA-TF motherboard running Ubuntu 18.04 and 19.10.  
