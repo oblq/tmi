@@ -3,11 +3,12 @@
 ***tmi*** is a simple program to remotely (or locally) control fan/pump speeds using IPMI (Intelligent Platform Management Interface) and/or a Corsair Commander Pro, based on the readings of temperature sensors (CPU, GPU or any sensor you can grab via command line).  
 Simply install it and tweaks config files as needed, they will be hot-reloaded automatically after saving changes.
 
->#### WARNING
->This project is born because I wanted to handle the thermal/acoustic behaviour of my personal workstation so it is not intended to be used in production environments.  
+#### Disclaimer
+> __WARNING__: ***tmi*** is not an official Corsair product. Corsair and Corsair Commander Pro are trademarks or registered trademarks of Corsair Components, Inc. The trademark holders are not affiliated with the maker of this product and do not endorse this product.  
+This project is born because I wanted to handle the thermal/acoustic behaviour of my personal workstation so it is not intended to be used in production environments.  
 This program is of public domain and provided as-is, without any warranty whatsoever.  
 It has only been tested on a SuperMicro X11SPA-TF motherboard running Ubuntu 18.04 and 19.10.  
-`tmi` sends raw IPMI commands to your IPMI device and to the Commander Pro and may not work on your platform without some modifications.  
+***tmi*** sends raw IPMI commands to your IPMI device and to the Commander Pro and may not work on your platform without some modifications.  
 **USE AT YOUR OWN RISK**.
 
 ## Features
@@ -170,3 +171,6 @@ controllers:
         56: 50
         63: 100
 ```
+## License
+
+tmi is available under the MIT license. See the [LICENSE](./LICENSE) file for more information.
