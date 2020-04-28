@@ -1,6 +1,6 @@
 # TMI (Thermal Management Interface)
 
-`tmi` is a simple program to remotely (or locally) control fan/pump speeds using IPMI (Intelligent Platform Management Interface) and/or a Corsair Commander Pro, based on the readings of temperature sensors (CPU, GPU or any sensor you can grab via command line).  
+***tmi*** is a simple program to remotely (or locally) control fan/pump speeds using IPMI (Intelligent Platform Management Interface) and/or a Corsair Commander Pro, based on the readings of temperature sensors (CPU, GPU or any sensor you can grab via command line).  
 Simply install it and tweaks config files as needed, they will be hot-reloaded automatically after saving changes.
 
 >#### WARNING

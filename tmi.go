@@ -116,6 +116,16 @@ func (cm *ControlManager) addModule(module interface{}) {
 	}
 }
 
+func (cm *ControlManager) hasModule(moduleName string) bool {
+	if _, ok := cm.tempGetters[moduleName]; ok {
+		return true
+	}
+	if _, ok := cm.fanControllers[moduleName]; ok {
+		return true
+	}
+	return false
+}
+
 // LoadConfig will do a hot reload of the
 // program configuration.
 func (cm *ControlManager) LoadConfigAndStart() (err error) {
@@ -140,7 +150,7 @@ func (cm *ControlManager) LoadConfigAndStart() (err error) {
 	fmt.Println("config updated")
 
 	// update modules
-	if cm.ActiveModules.Ipmi {
+	if cm.ActiveModules.Ipmi && !cm.hasModule("ipmi") {
 		var ipmiInterface *ipmi.IPMI
 		ipmiInterface, err = ipmi.New()
 		if err != nil {
@@ -149,7 +159,7 @@ func (cm *ControlManager) LoadConfigAndStart() (err error) {
 		cm.addModule(ipmiInterface)
 	}
 
-	if cm.ActiveModules.CommanderPro {
+	if cm.ActiveModules.CommanderPro && !cm.hasModule("commanderpro") {
 		var cpInterface *commanderpro.CommanderPro
 		cpInterface, err = commanderpro.Open()
 		if err != nil {
