@@ -4,7 +4,7 @@
 
 package=$1
 outpath=$2
-ldflags=$3
+#ldflags=$3
 
 if [[ "$package" = "help" ]]; then
     echo "usage: $0 <package-name> <output_path>"
@@ -25,17 +25,17 @@ platforms=("windows/amd64" "windows/386" "darwin/amd64" "linux/amd64" "linux/386
 
 for platform in "${platforms[@]}"
 do
-    platform_split=(${platform//\// })
-    GOOS=${platform_split[0]}
-    GOARCH=${platform_split[1]}
-    GOARCH=${platform_split[1]}
+  platform_split=(${platform//\// })
+  GOOS=${platform_split[0]}
+  GOARCH=${platform_split[1]}
 
-    output_name=${package_name}'-'${GOOS}'-'${GOARCH}
-    if [[ ${GOOS} = "windows" ]]; then
-        output_name+='.exe'
-    fi
+  output_name=${package_name}'-'${GOOS}'-'${GOARCH}
+  if [[ ${GOOS} = "windows" ]]; then
+      output_name+='.exe'
+  fi
 
-    env GOOS=${GOOS} GOARCH=${GOARCH} /usr/local/go/bin/go build -i -ldflags "-X main.Path=./" -o ${outpath}/${output_name} ${package}
+  # -ldflags "-X main.Path=./"
+  env GOOS=${GOOS} GOARCH=${GOARCH} `which go` build -trimpath -o ${outpath}/${output_name} ${package}
 done
 
 

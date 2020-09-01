@@ -7,17 +7,20 @@
 #  0x05: 0x00
 
 # Define external temp extractors to be used in the configurations below.
+# method must be the name of a TMITempExtractor plugin.
+#  method: commanderpro, ipmi, cli
+#  arg: {commanderpro: sensor_channel (int), ipmi: entityID, cli: custom_command}
 external_temps:
   cpu:
-    method: ipmi
+    plugin: ipmi
     arg: 3.1
 
   gpu:
-    method: cli
+    plugin: cli
     arg: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
 
   reservoir:
-    method: commanderpro
+    plugin: commanderpro
     arg: 0x00
 
 # Set led count per channel.

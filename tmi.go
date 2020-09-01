@@ -6,72 +6,26 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"plugin"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/oblq/tmi/modules/cli"
-	"github.com/oblq/tmi/modules/commanderpro"
-	"github.com/oblq/tmi/modules/ipmi"
 	"gopkg.in/yaml.v3"
 )
 
-type module interface {
-	Name() string
-}
-
-type tempExtractor interface {
-	module
-	GetTemp(arg string) (temp float64, err error)
-}
-
-type fanController interface {
-	module
-	SetChannelDutyCycle(ch uint8, dc uint8) error
-	GetChannelDutyCycle(ch uint8) (dc uint8, err error)
-	CheckConfig(path string)
-}
-
-type closer interface {
-	module
-	Close()
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-
-type Target struct {
-	fanController fanController
-	channel       uint8
-}
-
-type ControlManager struct {
-	mutex   sync.Mutex
-	ticker  *time.Ticker
-	running bool
-
-	configPath string
-	configStat os.FileInfo
-
-	ActiveModules struct {
-		Ipmi         bool
-		CommanderPro bool
-	} `yaml:"active_modules"`
+type TMIConfig struct {
+	// Plugins is an array of plugins names to load at startup
+	Plugins []string `yaml:"plugins"`
 
 	// checkInterval is the time between checks, in seconds.
 	CheckInterval int `yaml:"check_interval"`
 
-	tempGetters    map[string]tempExtractor
-	fanControllers map[string]fanController
-	// modules that needs to be closed
-	closers map[string]closer
-
-	// a map containing arbitrary names associated with a fanController:channel couple.
+	// a map containing arbitrary names associated with a TMIFanController:channel couple.
 	// eg.: `pump: ipmi.0` or `side: commanderpro.2`
 	TargetsMap map[string]string `yaml:"targets_map"`
-	// prepared target list with parsed fanController and channel
-	targets map[string]Target
 
 	// Controllers is an array of controllers.
 	// A controller consist in a struct describing the
@@ -79,62 +33,48 @@ type ControlManager struct {
 	// and the temp/duty-cycle mapping to be used for
 	// one or most specified targets.
 	Controllers []*controller `yaml:"controllers"`
-
-	// targetsDutyCycle represent the currently used
-	// duty-cycle for any given target.
-	targetsDutyCycle map[string]uint8
 }
 
-func New(configPath string) (cm *ControlManager, err error) {
-	cm = &ControlManager{
-		configPath:       configPath,
-		tempGetters:      make(map[string]tempExtractor),
-		fanControllers:   make(map[string]fanController),
-		closers:          make(map[string]closer),
-		targets:          make(map[string]Target),
-		Controllers:      make([]*controller, 0),
-		targetsDutyCycle: make(map[string]uint8),
+type TMI struct {
+	mutex   sync.Mutex
+	ticker  *time.Ticker
+	running bool
+
+	configPath string
+	configStat os.FileInfo
+	config     *TMIConfig
+
+	// always use pointers
+	plugins        map[string]TMIPlugin
+	tempExtractors map[string]TMITempExtractor
+	fanControllers map[string]TMIFanController
+
+	// prepared target list with parsed TMIFanController and channel
+	targets map[string]*target
+}
+
+func New(configPath string) (cm *TMI, err error) {
+	cm = &TMI{
+		configPath:     configPath,
+		plugins:        make(map[string]TMIPlugin),
+		tempExtractors: make(map[string]TMITempExtractor),
+		fanControllers: make(map[string]TMIFanController),
+		targets:        make(map[string]*target),
 	}
 
-	cliInterface := &cli.Cli{}
-	cm.addModule(cliInterface)
+	err = cm.loadConfigAndStart()
 
 	return
 }
 
-func (cm *ControlManager) addModule(module interface{}) {
-	if te, ok := module.(tempExtractor); ok {
-		cm.tempGetters[te.Name()] = te
-	}
+// loadConfigAndStart hot-reload the program configuration.
+func (tmi *TMI) loadConfigAndStart() (err error) {
+	tmi.mutex.Lock()
 
-	if fc, ok := module.(fanController); ok {
-		cm.fanControllers[fc.Name()] = fc
-	}
+	tmi.StopMonitoring()
 
-	if c, ok := module.(closer); ok {
-		cm.closers[c.Name()] = c
-	}
-}
-
-func (cm *ControlManager) hasModule(moduleName string) bool {
-	if _, ok := cm.tempGetters[moduleName]; ok {
-		return true
-	}
-	if _, ok := cm.fanControllers[moduleName]; ok {
-		return true
-	}
-	return false
-}
-
-// LoadConfig will do a hot reload of the
-// program configuration.
-func (cm *ControlManager) LoadConfigAndStart() (err error) {
-	cm.mutex.Lock()
-
-	cm.StopMonitoring()
-
-	configPath := filepath.Join(cm.configPath, "tmi.yaml")
-	if cm.configStat, err = os.Stat(configPath); err != nil {
+	configPath := filepath.Join(tmi.configPath, "tmi.yaml")
+	if tmi.configStat, err = os.Stat(configPath); err != nil {
 		return
 	}
 
@@ -142,143 +82,135 @@ func (cm *ControlManager) LoadConfigAndStart() (err error) {
 	if err != nil {
 		return
 	}
-	err = yaml.Unmarshal(config, &cm)
+	err = yaml.Unmarshal(config, &tmi.config)
 	if err != nil {
 		return
 	}
 
-	fmt.Println("config updated")
+	tmi.loadPlugins()
 
-	// update modules
-	if cm.ActiveModules.Ipmi && !cm.hasModule("ipmi") {
-		var ipmiInterface *ipmi.IPMI
-		ipmiInterface, err = ipmi.New()
-		if err != nil {
-			return
-		}
-		cm.addModule(ipmiInterface)
+	err = tmi.parseTargetsMap()
+	if err != nil {
+		return
 	}
 
-	if cm.ActiveModules.CommanderPro && !cm.hasModule("commanderpro") {
-		var cpInterface *commanderpro.CommanderPro
-		cpInterface, err = commanderpro.Open()
-		if err != nil {
-			return fmt.Errorf("unable to open connection to Corsair Commander Pro: " + err.Error())
-		}
-		cpInterface.GetExternalTemp = func(method, arg string) (temp float64, err error) {
-			tg, ok := cm.tempGetters[method]
-			if !ok {
-				return 0, fmt.Errorf("no such temp method: %s, defined in commanderpro config", method)
-			}
+	tmi.mutex.Unlock()
 
-			return tg.GetTemp(arg)
-		}
-		cm.addModule(cpInterface)
+	for _, fc := range tmi.plugins {
+		fc.ReadConfig(tmi.configPath)
 	}
 
-	// reset values
-	cm.targetsDutyCycle = make(map[string]uint8)
-
-	err = cm.parseTargetsMap()
-
-	cm.mutex.Unlock()
-
-	for _, fc := range cm.fanControllers {
-		fc.CheckConfig(cm.configPath)
-	}
-
-	cm.StartMonitoring()
+	tmi.StartMonitoring()
 
 	return
 }
 
-func (cm *ControlManager) parseTargetsMap() (err error) {
-	for key, couple := range cm.TargetsMap {
-		coupleArr := strings.SplitN(couple, ".", 2)
-		if len(coupleArr) < 2 {
-			err = errors.New("target_map value must be a string containing the target and one of its channels separated by a dot. eg.: `ipmi.0` ")
-			return
-		}
-		fanControllerName := coupleArr[0]
-		fanController, ok := cm.fanControllers[fanControllerName]
-		if !ok {
-			return fmt.Errorf("no such target %s", fanControllerName)
-		}
-		var fanControllerChannel int
-		fanControllerChannel, err = strconv.Atoi(coupleArr[1])
+// loadPlugins load all the needed plugins
+func (tmi *TMI) loadPlugins() {
+	for _, pName := range tmi.config.Plugins {
+		p, err := plugin.Open(filepath.Join(tmi.configPath, fmt.Sprintf("%s.so", pName)))
 		if err != nil {
-			return fmt.Errorf("target channel for %s is not a valid integer", fanControllerName)
+			panic(err)
 		}
-		cm.targets[key] = Target{
+
+		Plugin, err := p.Lookup("Plugin")
+		if err != nil {
+			panic(err)
+		}
+
+		i := Plugin.(TMIPluginGetter)()
+
+		if p, ok := i.(TMIPlugin); ok {
+			tmi.plugins[p.Name()] = p
+
+			if te, ok := i.(TMITempExtractor); ok {
+				tmi.tempExtractors[te.Name()] = te
+			}
+
+			if fc, ok := i.(TMIFanController); ok {
+				tmi.fanControllers[fc.Name()] = fc
+			}
+		}
+	}
+}
+
+func (tmi *TMI) hasPlugin(moduleName string) bool {
+	if _, ok := tmi.plugins[moduleName]; ok {
+		return true
+	}
+	return false
+}
+
+// parseTargetsMap parse the list of targets by name,
+// extracting the plugin and the corresponding channel.
+func (tmi *TMI) parseTargetsMap() error {
+	for targetName, pluginChannel := range tmi.config.TargetsMap {
+		coupleArr := strings.SplitN(pluginChannel, ".", 2)
+		if len(coupleArr) < 2 {
+			return errors.New("target_map value must be a string containing the target and one of its channels separated by a dot. eg.: `ipmi.0` ")
+		}
+		pluginName := coupleArr[0]
+		channel := coupleArr[1]
+		fanController, ok := tmi.fanControllers[pluginName]
+		if !ok {
+			return fmt.Errorf("no such target %s", pluginName)
+		}
+		fanControllerChannel, err := strconv.Atoi(channel)
+		if err != nil {
+			return fmt.Errorf("target channel for %s is not a valid integer", pluginName)
+		}
+		tmi.targets[targetName] = &target{
 			fanController: fanController,
 			channel:       uint8(fanControllerChannel),
 		}
 	}
 
-	return
-}
-
-func (cm *ControlManager) checkConfig() {
-	configPath := filepath.Join(cm.configPath, "tmi.yaml")
-	if configStat, err := os.Stat(configPath); err != nil {
-		fmt.Println("unable to stat config file:", err.Error())
-	} else if cm.configStat == nil ||
-		configStat.Size() != cm.configStat.Size() || configStat.ModTime() != cm.configStat.ModTime() {
-		cm.configStat = configStat
-
-		if err := cm.LoadConfigAndStart(); err != nil {
-			fmt.Println(err.Error())
-		}
-
-		return
-	}
-
-	for _, fc := range cm.fanControllers {
-		fc.CheckConfig(cm.configPath)
-	}
+	return nil
 }
 
 // StartMonitoring start the monitoring daemon,
 // checking temps and duty-cycles.
-func (cm *ControlManager) StartMonitoring() {
-	if cm.running {
+func (tmi *TMI) StartMonitoring() {
+	if tmi.running {
 		return
 	}
 
-	cm.running = true
-	cm.check()
+	tmi.running = true
+	tmi.checkTemperatures()
 
-	if cm.ticker != nil {
-		cm.ticker.Stop()
+	if tmi.ticker != nil {
+		tmi.ticker.Stop()
 	}
-	cm.ticker = time.NewTicker(time.Second * time.Duration(cm.CheckInterval))
+	tmi.ticker = time.NewTicker(time.Second * time.Duration(tmi.config.CheckInterval))
 	go func() {
-		for range cm.ticker.C {
-			cm.check()
-			cm.checkConfig()
+		for range tmi.ticker.C {
+			tmi.checkTemperatures()
+			tmi.checkConfig()
 		}
 	}()
 }
 
 // StopMonitoring stop the daemon.
-func (cm *ControlManager) StopMonitoring() {
-	if cm.ticker != nil {
-		cm.ticker.Stop()
+func (tmi *TMI) StopMonitoring() {
+	if tmi.ticker != nil {
+		tmi.ticker.Stop()
 	}
-	cm.running = false
+	tmi.running = false
 }
 
-func (cm *ControlManager) check() {
+// checkTemperatures is periodically called from the ticker to check the
+// temperature for any of the TMI controllers.
+func (tmi *TMI) checkTemperatures() {
 	logString := "	| "
 
-	cm.mutex.Lock()
+	tmi.mutex.Lock()
 
 	// grab the greater values divided by zone first
 	tempTargetsDutyCycles := make(map[string]uint8)
-	for _, controller := range cm.Controllers {
-		tg, ok := cm.tempGetters[controller.Temp.Method]
+	for _, controller := range tmi.config.Controllers {
+		tg, ok := tmi.tempExtractors[controller.Temp.Plugin]
 		if !ok {
-			fmt.Println("no such temp method: " + controller.Temp.Method)
+			fmt.Println("no such temp method: " + controller.Temp.Plugin)
 			continue
 		}
 
@@ -300,14 +232,14 @@ func (cm *ControlManager) check() {
 
 	// set the needed duty cycle if different from the current value
 	for target, dc := range tempTargetsDutyCycles {
-		t, ok := cm.targets[target]
+		t, ok := tmi.targets[target]
 		if !ok {
 			fmt.Println("no such target: " + target)
 			continue
 		}
 
-		if dc == 0 || cm.targetsDutyCycle[target] != dc {
-			cm.targetsDutyCycle[target] = dc
+		if dc == 0 || tmi.targets[target].dutyCycle != dc {
+			tmi.targets[target].dutyCycle = dc
 
 			//fmt.Printf("Updating '%s' zone duty cycle to: %d%%\n", zone, pwm)
 			if err := t.fanController.SetChannelDutyCycle(t.channel, dc); err != nil {
@@ -327,13 +259,13 @@ func (cm *ControlManager) check() {
 		}
 	}
 
-	cm.mutex.Unlock()
+	tmi.mutex.Unlock()
 
 	logString += "	->	| "
 
 	targets := make([]string, 0)
-	for target, dc := range cm.targetsDutyCycle {
-		targets = append(targets, fmt.Sprintf("%s %d%% | ", target, dc))
+	for targetName, target := range tmi.targets {
+		targets = append(targets, fmt.Sprintf("%s %d%% | ", targetName, target.dutyCycle))
 	}
 	sort.Strings(targets)
 	for _, log := range targets {
@@ -341,4 +273,28 @@ func (cm *ControlManager) check() {
 	}
 
 	fmt.Println(logString)
+}
+
+// checkConfig is periodically called from the ticker to check the
+// TMI configuration.
+func (tmi *TMI) checkConfig() {
+	configPath := filepath.Join(tmi.configPath, "tmi.yaml")
+	if configStat, err := os.Stat(configPath); err != nil {
+		fmt.Println("unable to stat config file:", err.Error())
+	} else if tmi.configStat == nil ||
+		configStat.Size() != tmi.configStat.Size() || configStat.ModTime() != tmi.configStat.ModTime() {
+		tmi.configStat = configStat
+
+		if err := tmi.loadConfigAndStart(); err != nil {
+			fmt.Println(err.Error())
+		}
+
+		fmt.Println("config updated")
+
+		return
+	}
+
+	for _, p := range tmi.plugins {
+		p.ReadConfig(tmi.configPath)
+	}
 }

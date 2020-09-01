@@ -1,7 +1,8 @@
-# disable the modules that you don't use.
-active_modules:
-  ipmi: true
-  commanderpro: true
+# Plugins to load.
+plugins:
+  - cli
+  - ipmi
+  - commanderpro
 
 # Number of seconds to sleep between checks.
 # Check configuration changes and sensors data every x seconds.
@@ -26,8 +27,7 @@ controllers:
     # Get the ipmi sensor entityID with: `sudo ipmitool sdr elist full` at the fourth column in result.
     # ... or with: `sudo ipmitool sensor get <sensor_id>` (eg.: sudo ipmitool sensor get 'CPU Temp')
     temp:
-      # commanderpro, ipmi, cli
-      method: ipmi
+      plugin: ipmi
       # commanderpro: sensor_channel (uint8 as string), ipmi: entityID, cli: custom_command
       arg: 3.1
     # Control multiple target zones with the same sensor...
@@ -56,7 +56,7 @@ controllers:
     # Should return a string representing a valid float number,
     # leading and trailing spaces will be automatically removed.
     temp:
-      method: cli
+      plugin: cli
       arg: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
     targets:
       pump:
@@ -81,7 +81,7 @@ controllers:
     min_temp_change: 3
     # temp_corsair_channel grab the temperature from a channel of the corsair commander pro
     temp:
-      method: ipmi
+      plugin: ipmi
       arg: 7.1
     targets:
       side:

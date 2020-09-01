@@ -1,17 +1,21 @@
-package commanderpro
+package main
 
 import (
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"plugin"
 	"sync"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/google/gousb"
+	"gopkg.in/yaml.v3"
 )
+
+func main() {
+
+}
 
 // list all devices:
 //  go get -v github.com/google/gousb/lsusb
@@ -52,15 +56,15 @@ type Color struct {
 }
 
 type externalTempExtractor struct {
-	Method string
+	Plugin string
 	Arg    string
 }
 
 type Config struct {
 	FanMode map[uint8]uint8 `yaml:"fan_mode"`
 
-	// commanderpro, ipmi, cli
-	// commanderpro: sensor_channel (int), ipmi: entityID, cli: custom_command
+	// method: commanderpro, ipmi, cli
+	// arg: {commanderpro: sensor_channel (int), ipmi: entityID, cli: custom_command}
 	ExternalTempExtractors map[string]externalTempExtractor `yaml:"external_temps"`
 
 	LedCountPerCh map[uint8]uint8 `yaml:"led_count_per_ch"`
@@ -98,13 +102,13 @@ type CommanderPro struct {
 
 	mutex sync.Mutex
 
-	configPath string
+	//configPath string
 	configStat os.FileInfo
 
 	config Config
 
-	externalTempTicker *time.Ticker
-	GetExternalTemp    func(method, arg string) (temp float64, err error)
+	externalTempTicker     *time.Ticker
+	externalTempExtractors map[string]TMITempExtractor
 }
 
 func (cp *CommanderPro) Open() (err error) {
@@ -114,12 +118,12 @@ func (cp *CommanderPro) Open() (err error) {
 	// Open any device with a given VID/PID using a convenience function.
 	cp.dev, err = cp.ctx.OpenDeviceWithVIDPID(vid, pid)
 	if err != nil || cp.dev == nil {
-		cp.Close()
+		cp.ShutDown()
 		return fmt.Errorf("could not open a device: %v", err)
 	}
 
 	if err = cp.dev.SetAutoDetach(true); err != nil {
-		cp.Close()
+		cp.ShutDown()
 		return fmt.Errorf("unable to set autodetach on device: %v", err)
 	}
 
@@ -128,7 +132,7 @@ func (cp *CommanderPro) Open() (err error) {
 	// config.
 	cp.intf, cp.intfDone, err = cp.dev.DefaultInterface()
 	if err != nil {
-		cp.Close()
+		cp.ShutDown()
 		return fmt.Errorf("%s.DefaultInterface(): %v", cp.dev, err)
 	}
 
@@ -147,143 +151,18 @@ func (cp *CommanderPro) Open() (err error) {
 	// Open an OUT endpoint.
 	cp.inEndpoint, err = cp.intf.InEndpoint(1)
 	if err != nil {
-		cp.Close()
+		cp.ShutDown()
 		return fmt.Errorf("%s.InEndpoint(1): %v", cp.intf, err)
 	}
 
 	// And in the same interface open endpoint #2 for writing.
 	cp.outEndpoint, err = cp.intf.OutEndpoint(2)
 	if err != nil {
-		cp.Close()
+		cp.ShutDown()
 		return fmt.Errorf("%s.OutEndpoint(2): %v", cp.intf, err)
 	}
 
-	//go func() {
-	//	for {
-	//		// readBytes might be smaller than the buffer size. readBytes might be greater than zero even if err is not nil.
-	//		buf := make([]byte, cp.inEndpoint.Desc.MaxPacketSize)
-	//		readBytes, err := cp.inEndpoint.Read(buf)
-	//		if err != nil {
-	//			fmt.Printf("read error: %v\n", err)
-	//		}
-	//		if readBytes == 0 {
-	//			fmt.Println("endpoint returned 0 bytes of data")
-	//		}
-	//
-	//		fmt.Printf("read buffer: %#v\n", buf)
-	//	}
-	//}()
-
 	return
-
-	//return cp.LoadConfig()
-}
-
-func (cp *CommanderPro) Close() {
-	if cp.ctx != nil {
-		cp.ctx.Close()
-	}
-	if cp.dev != nil {
-		cp.dev.Close()
-	}
-	//if cp.cfg != nil {
-	//	_ = cp.cfg.Close()
-	//}
-	if cp.intfDone != nil {
-		cp.intfDone()
-	}
-	if cp.intf != nil {
-		cp.intf.Close()
-	}
-}
-
-// LoadConfigThresholds will update ipmi fan thresholds.
-// `sudo watch ipmitool sensor` to get the current settings.
-func (cp *CommanderPro) LoadConfig() (err error) {
-	if cp.configStat, err = os.Stat(cp.configPath); err != nil {
-		return
-	}
-
-	configData, err := ioutil.ReadFile(cp.configPath)
-	if err != nil {
-		return err
-	}
-	err = yaml.Unmarshal(configData, &cp.config)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("commanderpro config updated")
-
-	for ch, ledCount := range cp.config.LedCountPerCh {
-		if err := cp.WriteLedCount(ch, ledCount); err != nil {
-			return fmt.Errorf("error setting number of leds per channel: %d - %d -> %s", ch, ledCount, err.Error())
-		}
-	}
-
-	externalTempExtractors := make(map[externalTempExtractor][]uint8)
-
-	if cp.config.TempShiftTest.Enabled {
-		go cp.tempShift(cp.config.TempShiftTest.Ch, cp.config.TempShiftTest.From, cp.config.TempShiftTest.To)
-	}
-
-	if err = cp.ClearGroup(LedCh1); err != nil {
-		return
-	}
-
-	if err = cp.ClearGroup(LedCh2); err != nil {
-		return
-	}
-
-	for _, groupConfig := range cp.config.LedGroupConfigs {
-		err = cp.WriteLedGroupSet(
-			groupConfig.LedCh,
-			groupConfig.LedOffset,
-			groupConfig.LedCount,
-			groupConfig.LedMode,
-			groupConfig.LedSpeed,
-			groupConfig.LedDirection,
-			groupConfig.LedStyle,
-			groupConfig.Color1,
-			groupConfig.Color2,
-			groupConfig.Color3,
-			groupConfig.Temp1,
-			groupConfig.Temp2,
-			groupConfig.Temp3)
-		if err != nil {
-			return err
-		}
-
-		if groupConfig.LedMode == LedMode_Temperature {
-			tempExtractor, ok := cp.config.ExternalTempExtractors[groupConfig.ExternalTemp]
-			if !ok {
-				return fmt.Errorf("no such external_temp: %s", groupConfig.ExternalTemp)
-			}
-			if externalTempExtractors[tempExtractor] == nil {
-				externalTempExtractors[tempExtractor] = make([]uint8, 0)
-			}
-			externalTempExtractors[tempExtractor] = append(externalTempExtractors[tempExtractor], groupConfig.LedCh)
-		}
-	}
-
-	cp.monitorExternalTempIfNeeded(externalTempExtractors)
-
-	return nil
-}
-
-func (cp *CommanderPro) CheckConfig(configPath string) {
-	cp.configPath = filepath.Join(configPath, "commanderpro.yaml")
-	if configStat, err := os.Stat(cp.configPath); err != nil {
-		fmt.Println("unable to stat config file:", err.Error())
-	} else if cp.configStat == nil || configStat.Size() != cp.configStat.Size() ||
-		configStat.ModTime() != cp.configStat.ModTime() {
-		cp.configStat = configStat
-		err = cp.LoadConfig()
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		return
-	}
 }
 
 func (cp *CommanderPro) cmd(cmd []byte) (response []byte, err error) {
@@ -309,15 +188,6 @@ func (cp *CommanderPro) cmd(cmd []byte) (response []byte, err error) {
 	return buf, nil
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-
-// module interface implementation
-func (cp *CommanderPro) Name() string {
-	return "commanderpro"
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-
 func (cp *CommanderPro) monitorExternalTempIfNeeded(tempExtractors map[externalTempExtractor][]uint8) {
 	if cp.config.TempShiftTest.Enabled {
 		return
@@ -334,7 +204,7 @@ func (cp *CommanderPro) monitorExternalTempIfNeeded(tempExtractors map[externalT
 	go func() {
 		for range cp.externalTempTicker.C {
 			for tExtractor, channels := range tempExtractors {
-				temp, err := cp.GetExternalTemp(tExtractor.Method, tExtractor.Arg)
+				temp, err := cp.externalTempExtractors[tExtractor.Plugin].GetTemp(tExtractor.Arg)
 				if err != nil {
 					fmt.Println("unable to extract temp for led channel:", err.Error())
 					continue
@@ -347,4 +217,147 @@ func (cp *CommanderPro) monitorExternalTempIfNeeded(tempExtractors map[externalT
 			}
 		}
 	}()
+}
+
+// pluggableModule interface implementation ----------------------------------------------------------------------------
+
+func Plugin() interface{} {
+	cp, err := Open()
+	if err != nil {
+		panic(err)
+	}
+
+	return cp
+}
+
+// module interface implementation
+func (cp *CommanderPro) Name() string {
+	return "commanderpro"
+}
+
+func (cp *CommanderPro) ReadConfig(configPath string) {
+
+	path := filepath.Join(configPath, "commanderpro.yaml")
+
+	if configStat, err := os.Stat(path); err != nil {
+
+		fmt.Println("unable to stat config file:", err.Error())
+
+	} else if cp.configStat == nil ||
+		configStat.Size() != cp.configStat.Size() ||
+		configStat.ModTime() != cp.configStat.ModTime() {
+
+		cp.configStat = configStat
+
+		configData, err := ioutil.ReadFile(path)
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+		err = yaml.Unmarshal(configData, &cp.config)
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+
+		fmt.Println("commanderpro config updated")
+
+		for ch, ledCount := range cp.config.LedCountPerCh {
+			if err := cp.WriteLedCount(ch, ledCount); err != nil {
+				detailedErr := fmt.Errorf("error setting number of leds per channel: %d - %d -> %s", ch, ledCount, err.Error())
+				fmt.Println(detailedErr.Error())
+				return
+			}
+		}
+
+		externalTempExtractors := make(map[externalTempExtractor][]uint8)
+
+		if cp.config.TempShiftTest.Enabled {
+			go cp.tempShift(cp.config.TempShiftTest.Ch, cp.config.TempShiftTest.From, cp.config.TempShiftTest.To)
+		}
+
+		if err = cp.ClearGroup(LedCh1); err != nil {
+			return
+		}
+
+		if err = cp.ClearGroup(LedCh2); err != nil {
+			return
+		}
+
+		for _, groupConfig := range cp.config.LedGroupConfigs {
+			err = cp.WriteLedGroupSet(
+				groupConfig.LedCh,
+				groupConfig.LedOffset,
+				groupConfig.LedCount,
+				groupConfig.LedMode,
+				groupConfig.LedSpeed,
+				groupConfig.LedDirection,
+				groupConfig.LedStyle,
+				groupConfig.Color1,
+				groupConfig.Color2,
+				groupConfig.Color3,
+				groupConfig.Temp1,
+				groupConfig.Temp2,
+				groupConfig.Temp3)
+			if err != nil {
+				fmt.Println(err.Error())
+				return
+			}
+
+			if groupConfig.LedMode == LedMode_Temperature {
+				cp.loadPlugins(path)
+
+				tempExtractor, ok := cp.config.ExternalTempExtractors[groupConfig.ExternalTemp]
+				if !ok {
+					fmt.Printf("no such external_temp: %s \n", groupConfig.ExternalTemp)
+
+				}
+				if externalTempExtractors[tempExtractor] == nil {
+					externalTempExtractors[tempExtractor] = make([]uint8, 0)
+				}
+				externalTempExtractors[tempExtractor] = append(externalTempExtractors[tempExtractor], groupConfig.LedCh)
+			}
+		}
+
+		cp.monitorExternalTempIfNeeded(externalTempExtractors)
+	}
+}
+
+func (cp *CommanderPro) loadPlugins(configPath string) {
+	for _, ete := range cp.config.ExternalTempExtractors {
+		p, err := plugin.Open(filepath.Join(configPath, fmt.Sprintf("%s.so", ete.Plugin)))
+		if err != nil {
+			panic(err)
+		}
+
+		Plugin, err := p.Lookup("Plugin")
+		if err != nil {
+			panic(err)
+		}
+
+		i := Plugin.(TMIPluginGetter)()
+
+		if p, ok := i.(TMITempExtractor); ok {
+			p.ReadConfig(configPath)
+			cp.externalTempExtractors[p.Name()] = p
+		}
+	}
+}
+
+func (cp *CommanderPro) ShutDown() {
+	if cp.ctx != nil {
+		cp.ctx.Close()
+	}
+	if cp.dev != nil {
+		cp.dev.Close()
+	}
+	//if cp.cfg != nil {
+	//	_ = cp.cfg.Close()
+	//}
+	if cp.intfDone != nil {
+		cp.intfDone()
+	}
+	if cp.intf != nil {
+		cp.intf.Close()
+	}
 }

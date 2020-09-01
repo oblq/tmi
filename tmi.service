@@ -8,9 +8,8 @@ StartLimitIntervalSec=0
 Restart=always
 RestartSec=1
 User=root
+# <path> will be replaced with sed
 ExecStart=<path>
-# Set optimal fan mode
-ExecStopPost=/usr/bin/ipmitool raw 0x30 0x45 0x01 0x02
 
 [Install]
 WantedBy=multi-user.target

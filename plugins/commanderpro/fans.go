@@ -1,4 +1,4 @@
-package commanderpro
+package main
 
 import "encoding/binary"
 
@@ -56,6 +56,8 @@ func (cp *CommanderPro) GetChannelRPM(fan FanCh) (rpm uint16, err error) {
 	return binary.BigEndian.Uint16(resp[1:3]), nil
 }
 
+// TMI fanController interface implementation --------------------------------------------------------------------------
+
 func (cp *CommanderPro) GetChannelDutyCycle(fan uint8) (dutyCycle uint8, err error) {
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
 	cmd[0] = byte(CMDGetFanFixedDutyCycle)
@@ -87,6 +89,8 @@ func (cp *CommanderPro) SetChannelDutyCycle(fan uint8, dutyCycle uint8) error {
 	_, err := cp.cmd(cmd)
 	return err
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
 
 func (cp *CommanderPro) SetChannelFixedRPM(fan FanCh, rpm uint16) error {
 	if rpm == 0 {

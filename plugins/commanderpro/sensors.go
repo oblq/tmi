@@ -1,4 +1,4 @@
-package commanderpro
+package main
 
 import (
 	"encoding/binary"
@@ -17,7 +17,8 @@ const (
 	TempSensor4        TempSensor = 0x03 // 4
 )
 
-// tempExtractor interface implementation
+// TMI tempExtractor interface implementation --------------------------------------------------------------------------
+
 func (cp *CommanderPro) GetTemp(sensor string) (temp float64, err error) {
 	var sNR uint64
 	sNR, err = strconv.ParseUint(sensor, 16, 8)
@@ -35,6 +36,8 @@ func (cp *CommanderPro) GetTemp(sensor string) (temp float64, err error) {
 	}
 	return float64(binary.BigEndian.Uint16(resp[1:3])) / 100, nil
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
 
 func (cp *CommanderPro) GetTempForSensor(sensor TempSensor) (temp float64, err error) {
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)

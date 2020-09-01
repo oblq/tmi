@@ -1,10 +1,8 @@
-package ipmi
+package main
 
 import (
 	"errors"
 	"fmt"
-
-	"github.com/oblq/tmi/modules/cli"
 )
 
 type fanThreshold struct {
@@ -29,7 +27,7 @@ func (t *fanThreshold) set(ipmiCMD string) error {
 	cmdLower := fmt.Sprintf("%s sensor thresh %s lower %s %s %s",
 		ipmiCMD, t.Name, t.Lower[0], t.Lower[1], t.Lower[2])
 
-	out, err = cli.Command(cmdLower)
+	out, err = command(cmdLower)
 	if err != nil {
 		return err
 	}
@@ -39,7 +37,7 @@ func (t *fanThreshold) set(ipmiCMD string) error {
 	cmdUpper := fmt.Sprintf("%s sensor thresh %s upper %s %s %s",
 		ipmiCMD, t.Name, t.Upper[0], t.Upper[1], t.Upper[2])
 
-	out, err = cli.Command(cmdUpper)
+	out, err = command(cmdUpper)
 	if err != nil {
 		return err
 	}

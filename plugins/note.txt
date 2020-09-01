@@ -1,0 +1,19 @@
+// https://www.reddit.com/r/golang/comments/b6h8qq/is_anyone_actually_using_go_plugins/
+
+
+
+We use Go plugins in a closed-source product at $dayjob. There have been a lot of headaches with it. I'm not sure it was the wrong decision to support plugins, but if I could tell 2-months-ago-me what I now know, I would have been a lot more hesitant to say "yeah, we can do that".
+
+It seems that the intended use-case for plugins is in-tree plugins; when you have code you don't want to always include in the main binary, but you have no problem with it living in the same git repo and getting compiled at the same time. It does not seem to be a good way to let users/customers add in their own code; there are headaches if you try to use them that way; they have to sufficiently emulate your environment when compiling the plugin:
+
+
+
+- The plugin compiler version must exactly match the program's compiler version. If the program was compiled with 1.11.4, it won't work to compile the plugin with 1.11.5. When distributing a program binary, you must communicate what the compiler version you used is.
+
+- Any packages outside of the standard library that are used by both the plugin and the program must have their versions match exactly. This means that when distributing a program binary, you must communicate the exact versions of all dependencies; we accomplish this by publishing the output of GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go list -deps -f='{{if not .Standard}}{{.Module}}{{end}}' ./cmd/the-program. Plugin authors will need to pin those versions in their go.mod.
+
+- If there are any packages outside of the standard library that are used by both the plugin and the program, then the plugin must be compiled with the same GOPATH setting as the program (even if using modules). This means that our users who use plugins must set GOPATH=/home/circleci/go, even though they don't have a circleci user. (or compoiling both with '--trimpath')
+
+- In order to work on things like Alpine Linux's musl libc6-compat, everything must be compiled for compatibility with LSB 3. Setting _FORTIFY_SOURCE=2 with GNU libc causes the CGO 1.12 runtime to require LSB 4. Several distros (including Ubuntu 14.04, which CircleCI uses) patch their GCC to define _FORTIFY_SOURCE=2 by default. When compiling plugins, users/customers may need to fuss with setting CGO_CPPFLAGS to make things not fall over.
+
+- Because plugins use the libc dynamic linker, they force CGO_ENABLED on; cross-compiling is no-longer easy to do. Someone wanting to compile a plugin for the GNU/Linux program binary from their macOS workstation must compile the plugin in a VM (or Docker, since Docker for Mac runs in a VM).

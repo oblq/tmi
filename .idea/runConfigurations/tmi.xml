@@ -2,7 +2,7 @@
   <configuration default="false" name="tmi" type="GoApplicationRunConfiguration" factoryName="Go Application">
     <module name="tmi" />
     <working_directory value="$PROJECT_DIR$" />
-    <go_parameters value="-i" />
+    <go_parameters value="--trimpath -ldflags &quot;-X main.Path=./local&quot;" />
     <sudo value="true" />
     <kind value="DIRECTORY" />
     <directory value="$PROJECT_DIR$" />

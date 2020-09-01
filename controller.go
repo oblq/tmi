@@ -6,20 +6,11 @@ import (
 	"sync"
 )
 
-type targetData struct {
-	dutyCycle          uint8
-	lastUpdatedTemp    float64
-	sortedMappingTemps []float64
-}
-
-// commanderpro, ipmi, cli
 type controller struct {
 	Name string `yaml:"name"`
 
-	// commanderpro, ipmi, cli
-	// commanderpro: sensor_channel (uint8 as string), ipmi: entityID, cli: custom_command
 	Temp struct {
-		Method string
+		Plugin string
 		Arg    string
 	} `yaml:"temp"`
 
@@ -27,59 +18,70 @@ type controller struct {
 	// from the last duty cycle update to actually cause another update.
 	MinTempChange float64 `yaml:"min_temp_change"`
 
-	// Targets are the ipmi zone target with their temp/duty-cycle mapping.
-	// cpu_zone: 0x00, io_zone: 0x01.
-	// target : channel : mappings
+	// Targets are the temp/duty-cycle mapping for any given target derived from 'targets_map'.
+	// targets_map:
+	//  pump: ipmi.0
+	//
+	// targets:
+	//      pump:
+	//        0:  30
+	//        36: 50
 	Targets map[string]map[float64]uint8 `yaml:"targets"`
 
-	// runtime vars -----------------------------------
+	// runtime vars -----------------------------------------------------------
 
 	once sync.Once
 
-	// <target:channel> : targetData
-	targetsData map[string]*targetData
+	// target derived from 'targets_map'.
+	// targets_map:
+	//  pump: ipmi.0
+	//
+	// <target> : *targetData
+	targets map[string]*target
 }
 
-// Calculate the needed duty-cycle for any target.
-// Takes in consideration the last
-// measured temp before the last update.
-func (c *controller) getNeededDutyCycles(curTemp float64) map[string]*targetData {
-	// prepare
+func (c *controller) prepare() {
 	c.once.Do(func() {
-		c.targetsData = make(map[string]*targetData)
+		c.targets = make(map[string]*target)
 
-		for target, mappings := range c.Targets {
-
+		for targetName, mappings := range c.Targets {
 			temps := make([]float64, 0)
 			for t := range mappings {
 				temps = append(temps, t)
 			}
 			sort.Float64s(temps)
 
-			c.targetsData[target] = &targetData{
+			c.targets[targetName] = &target{
 				dutyCycle:          0,
 				lastUpdatedTemp:    0,
 				sortedMappingTemps: temps,
 			}
 		}
 	})
+}
+
+// Calculate the needed duty-cycle for any target.
+// Takes in consideration the last
+// measured temp before the last update.
+func (c *controller) getNeededDutyCycles(curTemp float64) map[string]*target {
+	c.prepare()
 
 	for target, mappings := range c.Targets {
 
-		lastTemp := c.targetsData[target].lastUpdatedTemp
+		lastTemp := c.targets[target].lastUpdatedTemp
 		if math.Abs(curTemp-lastTemp) >= c.MinTempChange {
 
-			c.targetsData[target].lastUpdatedTemp = curTemp
+			c.targets[target].lastUpdatedTemp = curTemp
 
-			for _, temp := range c.targetsData[target].sortedMappingTemps {
+			for _, temp := range c.targets[target].sortedMappingTemps {
 
 				if temp > curTemp {
 					break
 				}
-				c.targetsData[target].dutyCycle = mappings[temp]
+				c.targets[target].dutyCycle = mappings[temp]
 			}
 		}
 	}
 
-	return c.targetsData
+	return c.targets
 }

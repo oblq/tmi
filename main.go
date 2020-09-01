@@ -7,8 +7,15 @@ import (
 	"syscall"
 )
 
-// should be interpolated with -ldflags at build time.
-var Path = "/home/marco/go/src/github.com/oblq/tmi/artifacts/"
+// can be interpolated with -ldflags at build time with an absolute path.
+var Path = "./"
+
+//func init() {
+//	if Path == "" {
+//		//_, filename, _, _ := runtime.Caller(0)
+//		//Path = filepath.Join(path.Dir(filename), "artifacts/")
+//	}
+//}
 
 func main() {
 	stopCh := make(chan os.Signal, 1)
@@ -25,15 +32,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if err = cm.LoadConfigAndStart(); err != nil {
-		panic(err)
-	}
 
 	<-done
 	fmt.Println("exiting")
 
 	cm.StopMonitoring()
-	for _, c := range cm.closers {
-		c.Close()
+	for _, c := range cm.plugins {
+		c.ShutDown()
 	}
 }

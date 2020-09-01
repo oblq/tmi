@@ -1,4 +1,4 @@
-package commanderpro
+package main
 
 import (
 	"encoding/binary"

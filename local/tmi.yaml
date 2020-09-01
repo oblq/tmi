@@ -1,0 +1,46 @@
+# Plugins to load.
+plugins:
+  - cli
+#  - ipmi
+
+# Number of seconds to sleep between checks.
+# Check configuration changes and sensors data every x seconds.
+check_interval: 2
+
+# Create a targets map to be used as reference inside the controllers configuration below.
+# <arbitrary_name>: <fan_controller>.<fan_controller_channel>
+targets_map:
+#  pump: ipmi.0
+#  side: commanderpro.0
+#  top: commanderpro.1
+#  front: commanderpro.2
+#  rear: commanderpro.3
+
+controllers:
+
+  - name: CPU
+    min_temp_change: 4
+    # Get the ipmi sensor entityID with: `sudo ipmitool sdr elist full` at the fourth column in result.
+    # ... or with: `sudo ipmitool sensor get <sensor_id>` (eg.: sudo ipmitool sensor get 'CPU Temp')
+    temp:
+      plugin: ipmi #cli
+      arg: 3.1 #powermetrics --samplers smc -i1 -n1 |grep -i "CPU die temperature" | cut -d ' ' -f 4 #
+    targets:
+#      pump:
+#        0:  30
+#        20: 100
+#        54: 72
+#        60: 100
+
+  - name: GPU
+    min_temp_change: 4
+    # Should return a string representing a valid float number, leading and trailing spaces will be automatically removed.
+    temp:
+      plugin: cli
+      arg: powermetrics --samplers smc -i1 -n1 |grep -i "GPU die temperature" | cut -d ' ' -f 4 # nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
+    targets:
+#      pump:
+#        0: 30
+#        45: 50
+#        55: 75
+#        65: 100
