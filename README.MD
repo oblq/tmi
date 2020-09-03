@@ -1,6 +1,13 @@
 # TMI (Thermal Management Interface)
 
-***tmi*** is a simple program to remotely (or locally) control fan/pump speeds using IPMI (Intelligent Platform Management Interface) and/or a Corsair Commander Pro, based on the readings of temperature sensors (CPU, GPU or any sensor you can grab via command line).  
+***tmi*** is a simple program to control fan/pump speeds based on the readings of temperature sensors.  
+Temperature extractors and fan controllers are implemented as hot-swappable Go plugins and so they are completely decoupled.  
+
+The package include 3 plugins:
+- `ipmi` for IPMI (Intelligent Platform Management Interface) which can also control remote machines.
+- `commanderpro` for Corsair Commander Pro which also includes led control.
+- `cli` for command line operations (GPU and any other sensor you can grab via command line).
+  
 Simply install it and tweaks config files as needed, they will be hot-reloaded automatically after saving changes.
 
 #### Disclaimer
@@ -44,8 +51,8 @@ This will:
 
 ![service](tmi.png)
 
-At this point you just have to play with the configs ([`tmi.yaml`](artifacts/tmi.yaml), [`ipmi.yaml`](artifacts/ipmi.yaml) and [`commanderpro.yaml`](artifacts/commanderpro.yaml)) which has been copied in '/opt/tmi'.  
-They will be reloaded automatically after saving changes, just wait for the next check cycle (check_interval is defined in the tmi.yaml config itself).  
+At this point you just have to play with the configs ([`tmi.yaml`](./tmi.yaml) and the ones relative to the plugins) which has been copied in '/opt/tmi'.  
+They will be reloaded automatically after saving changes (separately), just wait for the next check cycle (check_interval is defined in the tmi.yaml config itself).  
 You can monitor `tmi` status at any time with:
 ````bash
 journalctl -f -u tmi
@@ -58,22 +65,25 @@ journalctl -f -u tmi
     brew install ipmitool
     brew install libusb
     ```
-2. If you have `go` installed build the executable and copy the configs to the desired path.
+2. Build the executable and copy the configs to the desired path.
     ```sh
     sudo make build path=/opt/tmi
     ```
-   ...otherwise manually copy the right precompiled executable and both config files in the same destination path.
-3. Run the executable as a daemon.
-4. Monitor its stdout.
-5. Stress your machine to see if it works!
+3. Compile plugins:
+    ```sh
+    sudo make build_plugins path=/opt/tmi
+   ```
+4. Run the executable as a daemon.
+5. Monitor its stdout.
+6. Stress your machine to see if it works!
 
 ## Configuration & Usage
 
-Three config files are required for `tmi` to run.  
-Anytime you save some changes the configs are hot-reloaded (separately).  
+`tmi` needs its config file to run.  
+Anytime you save some changes the configs are hot-reloaded.  
 The configuration options are documented in the sample files.
 
-[`tmi.yaml`](artifacts/tmi.yaml):  
+[`tmi.yaml`](./tmi.yaml):  
 
 ```yaml
 # Plugins to load.
@@ -105,7 +115,6 @@ controllers:
     # Get the ipmi sensor entityID with: `sudo ipmitool sdr elist full` at the fourth column in result.
     # ... or with: `sudo ipmitool sensor get <sensor_id>` (eg.: sudo ipmitool sensor get 'CPU Temp')
     temp:
-      # commanderpro, ipmi, cli
       plugin: ipmi
       # commanderpro: sensor_channel (uint8 as string), ipmi: entityID, cli: custom_command
       arg: 3.1
@@ -158,7 +167,6 @@ controllers:
 
   - name: PCH
     min_temp_change: 3
-    # temp_corsair_channel grab the temperature from a channel of the corsair commander pro
     temp:
       plugin: ipmi
       arg: 7.1
