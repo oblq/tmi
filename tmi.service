@@ -10,6 +10,12 @@ RestartSec=1
 User=root
 # <path> will be replaced with sed
 ExecStart=<path>
+Nice=-20
+CPUSchedulingPolicy=other
+CPUSchedulingPriority=99
+IOSchedulingClass=realtime
+IOSchedulingPriority=0
+CPUSchedulingResetOnFork=true
 
 [Install]
 WantedBy=multi-user.target

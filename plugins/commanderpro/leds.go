@@ -200,11 +200,11 @@ func (cp *CommanderPro) ClearGroup(ch uint8) (err error) {
 //    commands[2] = ctrl->channel;
 //    commands[3] = 0x0A;
 //    commands[4] = 0x28;
-func (cp *CommanderPro) WriteLedExternalTemp(ledCh uint8, temp float64) (err error) {
+func (cp *CommanderPro) WriteLedExternalTemp(ledCh, groupOffset uint8, temp float64) (err error) {
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
 	cmd[0] = byte(CMDWriteLedExternalTemp)
 	cmd[1] = ledCh
-	cmd[2] = 0x00
+	cmd[2] = groupOffset //0x00
 	binary.BigEndian.PutUint16(cmd[3:5], uint16(temp*100))
 
 	_, err = cp.cmd(cmd)
@@ -249,7 +249,7 @@ func (cp *CommanderPro) tempShift(ch uint8, from, to float64) {
 
 	if from < to {
 		for i <= to {
-			_ = cp.WriteLedExternalTemp(ch, i)
+			_ = cp.WriteLedExternalTemp(ch, 0x00, i)
 			time.Sleep(time.Millisecond * 500)
 			i += 2
 		}
@@ -257,7 +257,7 @@ func (cp *CommanderPro) tempShift(ch uint8, from, to float64) {
 
 	if from > to {
 		for i >= to {
-			_ = cp.WriteLedExternalTemp(ch, i)
+			_ = cp.WriteLedExternalTemp(ch, 0x00, i)
 			time.Sleep(time.Millisecond * 500)
 			i -= 2
 		}

@@ -6,13 +6,13 @@ build_plugins:
 ## build		: (usage: sudo make build path=/opt/tmi) build the go program for the current environment, copy the executable and the config files to the specified path.
 .PHONY: build
 build:
-	/usr/local/go/bin/go build -trimpath -ldflags "-X main.Path=$(path)" -o $(path)/tmi . ; \
-    cp -n ./tmi.yaml $(path)/tmi.yaml && chmod 666 $(path)/tmi.yaml;
+	go build -trimpath -ldflags "-X main.Path=$(path)" -o $(path)/tmi . ; \
+    cp -n ./tmi.yaml $(path)/tmi.yaml; # && chmod 666 $(path)/tmi.yaml;
 #    cp -n ./artifacts/ipmi.yaml $(path)/ipmi.yaml && chmod 666 $(path)/ipmi.yaml; \
 #    cp -n ./artifacts/commanderpro.yaml $(path)/commanderpro.yaml && chmod 666 $(path)/commanderpro.yaml;
 
-# !!run with sudo
-## install_linux	: (usage: sudo make install_linux path=/opt/tmi) run build, copy_files, install `ipmitool` and create a systemctl service to run the application as a daemon.
+# !!run with sudo, -E or --preserve-env=PATH
+## install_linux	: (usage: sudo --preserve-env=PATH make install_linux path=/opt/tmi) run build, copy_files, install `ipmitool` and create a systemctl service to run the application as a daemon.
 .PHONY: install_linux
 install_linux: build_plugins build
 	apt-get -qy install ipmitool; \

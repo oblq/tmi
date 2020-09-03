@@ -25,7 +25,7 @@ platforms=("windows/amd64" "windows/386" "darwin/amd64" "linux/amd64" "linux/386
 
 for platform in "${platforms[@]}"
 do
-  platform_split=(${platform//\// })
+  platform_split=("${platform//\// }")
   GOOS=${platform_split[0]}
   GOARCH=${platform_split[1]}
 
@@ -35,7 +35,7 @@ do
   fi
 
   # -ldflags "-X main.Path=./"
-  env GOOS=${GOOS} GOARCH=${GOARCH} `which go` build -trimpath -o ${outpath}/${output_name} ${package}
+  env GOOS="${GOOS}" GOARCH="${GOARCH}" go build -trimpath -o "${outpath}/${output_name}" "${package}"
 done
 
 

@@ -33,12 +33,13 @@ Precompiled executable are inside artifacts dir, config files must reside in the
 #### Ubuntu / Debian:
 Simply use the makefile and adjust the three config files according to your needs:
 ```sh
-sudo make install_linux path=/opt/tmi
+sudo --preserve-env=PATH make install_linux path=/opt/tmi
 ```
 This will:
 - Build the executable for the current platform to the specified path (eg.:/opt/tmi).
+- Build all the plugins to the same folder.
 - Copy the config files to the same path (will not be overwritten if exist).
-- Install `ipmitool` if not already installed.
+- Install `ipmitool` and `libusb` if not already installed.
 - Setup a systemd service (tmi), enable and start it. 
 
 ![service](tmi.png)
@@ -75,14 +76,15 @@ The configuration options are documented in the sample files.
 [`tmi.yaml`](artifacts/tmi.yaml):  
 
 ```yaml
-# disable the modules that you don't use.
-active_modules:
-  ipmi: true
-  commanderpro: true
+# Plugins to load.
+plugins:
+  - cli
+  - ipmi
+  - commanderpro
 
 # Number of seconds to sleep between checks.
 # Check configuration changes and sensors data every x seconds.
-check_interval: 6
+check_interval: 3
 
 # Create a targets map to be used as reference inside the controllers configuration below.
 # <arbitrary_name>: <fan_controller>.<fan_controller_channel>
@@ -104,7 +106,7 @@ controllers:
     # ... or with: `sudo ipmitool sensor get <sensor_id>` (eg.: sudo ipmitool sensor get 'CPU Temp')
     temp:
       # commanderpro, ipmi, cli
-      method: ipmi
+      plugin: ipmi
       # commanderpro: sensor_channel (uint8 as string), ipmi: entityID, cli: custom_command
       arg: 3.1
     # Control multiple target zones with the same sensor...
@@ -133,7 +135,7 @@ controllers:
     # Should return a string representing a valid float number,
     # leading and trailing spaces will be automatically removed.
     temp:
-      method: cli
+      plugin: cli
       arg: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
     targets:
       pump:
@@ -158,7 +160,7 @@ controllers:
     min_temp_change: 3
     # temp_corsair_channel grab the temperature from a channel of the corsair commander pro
     temp:
-      method: ipmi
+      plugin: ipmi
       arg: 7.1
     targets:
       front:

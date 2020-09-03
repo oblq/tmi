@@ -6,7 +6,7 @@ plugins:
 
 # Number of seconds to sleep between checks.
 # Check configuration changes and sensors data every x seconds.
-check_interval: 6
+check_interval: 3
 
 # Create a targets map to be used as reference inside the controllers configuration below.
 # <arbitrary_name>: <fan_controller>.<fan_controller_channel>
@@ -22,7 +22,7 @@ controllers:
   # name is arbitrary, will be printed in logs.
   - name: CPU
     # The minimum change in °C from the last update to actually cause another fan speed change.
-    min_temp_change: 4
+    min_temp_change: 3
     # IPMI sensor entityID to look for.
     # Get the ipmi sensor entityID with: `sudo ipmitool sdr elist full` at the fourth column in result.
     # ... or with: `sudo ipmitool sensor get <sensor_id>` (eg.: sudo ipmitool sensor get 'CPU Temp')
@@ -33,22 +33,22 @@ controllers:
     # Control multiple target zones with the same sensor...
     targets:
       pump:
-        0:  30
+        0:  38
         36: 50
-        54: 72
+        48: 72
         60: 100
       side:
         0: 0
         35: 30
         45: 50
-        55: 75
-        65: 100
+        52: 75
+        60: 100
       top:
         0: 18
         35: 30
         45: 50
-        55: 75
-        65: 100
+        52: 75
+        60: 100
 
   - name: GPU
     min_temp_change: 2
@@ -60,22 +60,22 @@ controllers:
       arg: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
     targets:
       pump:
-        0: 30
-        45: 50
-        55: 75
-        65: 100
+        0: 38
+        36: 50
+        48: 75
+        60: 100
       side:
         0: 0
         35: 30
         45: 50
-        55: 75
-        65: 100
+        52: 75
+        60: 100
       top:
         0: 18
         35: 30
         45: 50
-        55: 75
-        65: 100
+        52: 75
+        60: 100
 
   - name: PCH
     min_temp_change: 3
@@ -86,20 +86,21 @@ controllers:
     targets:
       side:
         0: 0
-        53: 34
-        56: 50
-        63: 100
+        53: 60
+        57: 70
+        60: 100
       top:
         0: 0
-        53: 34
-        56: 50
-        63: 100
+        53: 20
+        57: 42
+        60: 100
       front:
         0: 34
-        56: 70
-        63: 100
+        50: 54
+        57: 70
+        60: 100
       rear:
-        0: 18
-        53: 30
-        56: 50
-        63: 100
+        0: 34 #18
+        50: 42 #34
+        57: 70 #50
+        60: 100

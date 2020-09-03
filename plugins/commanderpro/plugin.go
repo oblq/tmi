@@ -1,7 +1,7 @@
 package main
 
 // TMIPluginGetter is the func that the go plugin (<plugin>.so) must implement
-type TMIPluginGetter = func() TMIPlugin
+type TMIPluginGetter = func() interface{}
 
 type TMIPlugin interface {
 	Name() string

@@ -4,18 +4,25 @@
 
 set -e
 
-for package in ./plugins/*/ ; do
+if [[ -z "$path" ]]; then
+  echo "building package in working directory..."
+  path="."
+fi
 
-  package_name="${package%%/}"; # trim trailing slash
+for package in ./plugins/*/; do
+
+  package_name="${package%%/}" # trim trailing slash
   cd "$package_name"
 
-  output_name="${package_name##*/}.so"; # remove everything before the last / that still remains
+  output_name="${package_name##*/}" # remove everything before the last / that still remains
 
-  `which go` build -trimpath -buildmode=plugin -o "$output_name"
-#  cp "./$output_name" "../../artifacts/$output_name" && chmod 666 "../../artifacts/$output_name"
+  go build -trimpath -buildmode=plugin -o "${path}/${output_name}.so"
+  cp -n "./${output_name}.yaml" "${path}/${output_name}.yaml" 2>/dev/null || : # && chmod 666 $(path)/tmi.yaml;
 
-# build plugins for debug
-  `which go` build -trimpath -buildmode=plugin -o "../../local/$output_name" -gcflags "all=-N -l"
+  #  cp "./$output_name" "../../artifacts/$output_name" && chmod 666 "../../artifacts/$output_name"
+
+  # build plugins for debug
+  go build -trimpath -buildmode=plugin -o "../../local/$output_name" -gcflags "all=-N -l"
 
   cd -
 

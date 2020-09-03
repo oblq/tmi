@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"plugin"
+	"sort"
 	"sync"
 	"time"
 
@@ -58,6 +59,20 @@ type Color struct {
 type externalTempExtractor struct {
 	Plugin string
 	Arg    string
+
+	// the last extracted temp
+	lastTemp float64
+}
+
+type GroupConfig struct {
+	LedCh, LedOffset, LedCount, LedMode, LedSpeed, LedDirection, LedStyle uint8
+	Color1, Color2, Color3                                                Color
+	Temp1, Temp2, Temp3                                                   float64
+	ExternalTemp                                                          string
+}
+
+type TempTarget struct {
+	LedCh, LedOffset, LedCount uint8
 }
 
 type Config struct {
@@ -65,7 +80,7 @@ type Config struct {
 
 	// method: commanderpro, ipmi, cli
 	// arg: {commanderpro: sensor_channel (int), ipmi: entityID, cli: custom_command}
-	ExternalTempExtractors map[string]externalTempExtractor `yaml:"external_temps"`
+	ExternalTempExtractors map[string]*externalTempExtractor `yaml:"external_temps"`
 
 	LedCountPerCh map[uint8]uint8 `yaml:"led_count_per_ch"`
 
@@ -76,12 +91,7 @@ type Config struct {
 		To      float64
 	} `yaml:"temp_shift_test"`
 
-	LedGroupConfigs map[string]struct {
-		LedCh, LedOffset, LedCount, LedMode, LedSpeed, LedDirection, LedStyle uint8
-		Color1, Color2, Color3                                                Color
-		Temp1, Temp2, Temp3                                                   float64
-		ExternalTemp                                                          string
-	} `yaml:"led_group_configs"`
+	LedGroupConfigs map[string]GroupConfig `yaml:"led_group_configs"`
 }
 
 func Open() (cp *CommanderPro, err error) {
@@ -107,8 +117,11 @@ type CommanderPro struct {
 
 	config Config
 
-	externalTempTicker     *time.Ticker
-	externalTempExtractors map[string]TMITempExtractor
+	getDone                  chan bool
+	externalTempGetterTicker *time.Ticker
+	setDone                  chan bool
+	externalTempSetterTicker *time.Ticker
+	externalTempExtractors   map[string]TMITempExtractor
 }
 
 func (cp *CommanderPro) Open() (err error) {
@@ -128,8 +141,7 @@ func (cp *CommanderPro) Open() (err error) {
 	}
 
 	// Claim the default interface using a convenience function.
-	// The default interface is always #0 alt #0 in the currently active
-	// config.
+	// The default interface is always #0 alt #0 in the currently active config.
 	cp.intf, cp.intfDone, err = cp.dev.DefaultInterface()
 	if err != nil {
 		cp.ShutDown()
@@ -188,37 +200,6 @@ func (cp *CommanderPro) cmd(cmd []byte) (response []byte, err error) {
 	return buf, nil
 }
 
-func (cp *CommanderPro) monitorExternalTempIfNeeded(tempExtractors map[externalTempExtractor][]uint8) {
-	if cp.config.TempShiftTest.Enabled {
-		return
-	}
-
-	if len(tempExtractors) == 0 {
-		if cp.externalTempTicker != nil {
-			cp.externalTempTicker.Stop()
-		}
-		return
-	}
-
-	cp.externalTempTicker = time.NewTicker(time.Second * time.Duration(4))
-	go func() {
-		for range cp.externalTempTicker.C {
-			for tExtractor, channels := range tempExtractors {
-				temp, err := cp.externalTempExtractors[tExtractor.Plugin].GetTemp(tExtractor.Arg)
-				if err != nil {
-					fmt.Println("unable to extract temp for led channel:", err.Error())
-					continue
-				}
-				for _, ch := range channels {
-					if err := cp.WriteLedExternalTemp(ch, temp); err != nil {
-						fmt.Println("unable to send temp to led channel:", err.Error())
-					}
-				}
-			}
-		}
-	}()
-}
-
 // pluggableModule interface implementation ----------------------------------------------------------------------------
 
 func Plugin() interface{} {
@@ -270,7 +251,7 @@ func (cp *CommanderPro) ReadConfig(configPath string) {
 			}
 		}
 
-		externalTempExtractors := make(map[externalTempExtractor][]uint8)
+		externalTempExtractors := make(map[*externalTempExtractor][]TempTarget)
 
 		if cp.config.TempShiftTest.Enabled {
 			go cp.tempShift(cp.config.TempShiftTest.Ch, cp.config.TempShiftTest.From, cp.config.TempShiftTest.To)
@@ -305,7 +286,7 @@ func (cp *CommanderPro) ReadConfig(configPath string) {
 			}
 
 			if groupConfig.LedMode == LedMode_Temperature {
-				cp.loadPlugins(path)
+				cp.loadPlugins(configPath)
 
 				tempExtractor, ok := cp.config.ExternalTempExtractors[groupConfig.ExternalTemp]
 				if !ok {
@@ -313,9 +294,10 @@ func (cp *CommanderPro) ReadConfig(configPath string) {
 
 				}
 				if externalTempExtractors[tempExtractor] == nil {
-					externalTempExtractors[tempExtractor] = make([]uint8, 0)
+					externalTempExtractors[tempExtractor] = make([]TempTarget, 0)
 				}
-				externalTempExtractors[tempExtractor] = append(externalTempExtractors[tempExtractor], groupConfig.LedCh)
+				tempTarget := TempTarget{LedCh: groupConfig.LedCh, LedOffset: groupConfig.LedOffset, LedCount: groupConfig.LedCount}
+				externalTempExtractors[tempExtractor] = append(externalTempExtractors[tempExtractor], tempTarget)
 			}
 		}
 
@@ -324,7 +306,13 @@ func (cp *CommanderPro) ReadConfig(configPath string) {
 }
 
 func (cp *CommanderPro) loadPlugins(configPath string) {
+	cp.externalTempExtractors = make(map[string]TMITempExtractor, len(cp.config.ExternalTempExtractors))
 	for _, ete := range cp.config.ExternalTempExtractors {
+		if ete.Plugin == cp.Name() {
+			cp.externalTempExtractors[ete.Plugin] = cp
+			continue
+		}
+
 		p, err := plugin.Open(filepath.Join(configPath, fmt.Sprintf("%s.so", ete.Plugin)))
 		if err != nil {
 			panic(err)
@@ -346,10 +334,10 @@ func (cp *CommanderPro) loadPlugins(configPath string) {
 
 func (cp *CommanderPro) ShutDown() {
 	if cp.ctx != nil {
-		cp.ctx.Close()
+		_ = cp.ctx.Close()
 	}
 	if cp.dev != nil {
-		cp.dev.Close()
+		_ = cp.dev.Close()
 	}
 	//if cp.cfg != nil {
 	//	_ = cp.cfg.Close()
@@ -360,4 +348,92 @@ func (cp *CommanderPro) ShutDown() {
 	if cp.intf != nil {
 		cp.intf.Close()
 	}
+}
+
+func (cp *CommanderPro) monitorExternalTempIfNeeded(tempExtractors map[*externalTempExtractor][]TempTarget) {
+	if cp.config.TempShiftTest.Enabled {
+		return
+	}
+
+	if cp.getDone != nil {
+		close(cp.getDone)
+	}
+	if cp.setDone != nil {
+		close(cp.setDone)
+	}
+
+	if len(tempExtractors) == 0 {
+		if cp.externalTempGetterTicker != nil {
+			cp.externalTempGetterTicker.Stop()
+		}
+		if cp.externalTempSetterTicker != nil {
+			cp.externalTempSetterTicker.Stop()
+		}
+
+		close(cp.getDone)
+
+		return
+	}
+
+	for _, channels := range tempExtractors {
+		sort.Slice(channels, func(i, j int) bool {
+			return channels[i].LedOffset < channels[j].LedOffset
+		})
+	}
+
+	getTemps := func() {
+		for tExtractor := range tempExtractors {
+			temp, err := cp.externalTempExtractors[tExtractor.Plugin].GetTemp(tExtractor.Arg)
+			if err != nil {
+				fmt.Println("unable to extract temp for led channel:", err.Error())
+				continue
+			}
+			tExtractor.lastTemp = temp
+		}
+	}
+
+	setTemps := func() {
+		//fmt.Println()
+		for tExtractor, channels := range tempExtractors {
+			for _, target := range channels {
+				//fmt.Println(target.LedCh, target.LedOffset, tExtractor.lastTemp)
+				if err := cp.WriteLedExternalTemp(target.LedCh, target.LedOffset, tExtractor.lastTemp); err != nil {
+					fmt.Println("unable to send temp to led channel:", err.Error())
+				}
+			}
+		}
+	}
+
+	go func() {
+		getTemps()
+		setTemps()
+	}()
+
+	cp.getDone = make(chan bool, 1)
+	cp.externalTempGetterTicker = time.NewTicker(time.Second * 3)
+	go func() {
+		for {
+			select {
+			case <-cp.externalTempGetterTicker.C:
+				getTemps()
+			case <-cp.getDone:
+				cp.getDone = nil
+				return
+			}
+		}
+	}()
+
+	cp.setDone = make(chan bool, 1)
+	cp.externalTempSetterTicker = time.NewTicker(time.Second * 1)
+	go func() {
+		for {
+			select {
+			case <-cp.externalTempSetterTicker.C:
+				setTemps()
+			case <-cp.setDone:
+				cp.setDone = nil
+				return
+			}
+		}
+	}()
 }
