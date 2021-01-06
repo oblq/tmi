@@ -6,13 +6,9 @@ cmd: ipmitool # for remote control use: `ipmitool -I lanplus -U '<ipmi_user>' -P
 # This is the value passed directly to the IPMI raw command, so also hex values are accepted.
 #
 # IPMI known fan modes :
-# BMC control of both zones, CPU zone based on CPU temp (target speed 50%), and Peripheral zone based on PCH temp (target speed 50%)
 # - Standard = 0 or 0x00
-# BMC control of the CPU fan zone (target speed 30%) with Peripheral zone fixed at low speed (fixed ~30%)
-# - Optimal  = 2 or 0x02
-# All fans running at 100%
 # - Full     = 1 or 0x01
-# BMC control of CPU zone (target speed 50%) Peripheral zone fixed at 75%)
+# - Optimal  = 2 or 0x02
 # - HeavyIO  = 4 or 0x04
 #
 # IPMIFC custom mode:

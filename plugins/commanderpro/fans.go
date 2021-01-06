@@ -1,12 +1,23 @@
 package main
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"sort"
+)
+
+type FanCh byte
+type FanMode byte
+
+type FanCurves map[FanCh]struct {
+	Sensor  TempSensor        `yaml:"sensor"`
+	Mapping map[uint16]uint16 `yaml:"mapping"`
+}
 
 const (
 	CMDGetFanMask           cmd = 0x20
 	CMDGetFanRPM            cmd = 0x21 // CMDReadFanSpeed
-	CMDGetFanFixedDutyCycle cmd = 0x22 // CMDReadFanPower
-	CMDSetFanFixedDutyCycle cmd = 0x23 // CMDWriteFanPower
+	CMDGetFanFixedDutyCycle cmd = 0x22 // CMDReadFanPower pwm
+	CMDSetFanFixedDutyCycle cmd = 0x23 // CMDWriteFanPower pwm
 	CMDSetFanFixedRPM       cmd = 0x24 // CMDWriteFanSpeed
 	CMDSetFanCustomCurve    cmd = 0x25 // CMDWriteFanCurve
 	CMDWriteFanExternalTemp cmd = 0x26 // CMDWriteFanExternalTemp
@@ -44,6 +55,47 @@ func (cp *CommanderPro) GetFanMask() (fan1, fan2, fan3, fan4, fan5, fan6 FanMode
 		nil
 }
 
+// TMI fanController interface implementation --------------------------------------------------------------------------
+
+func (cp *CommanderPro) GetChannelDutyCycle(fan FanCh) (dutyCycle uint8, err error) {
+	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
+	cmd[0] = byte(CMDGetFanFixedDutyCycle)
+	cmd[1] = byte(fan)
+
+	resp, err := cp.cmd(cmd)
+	return resp[1], err
+}
+
+// fanController interface implementation.
+//  "Fixed %" (percent configuration request 0x23) 40%
+//  "Max" (percent configuration request) (100%)
+func (cp *CommanderPro) SetChannelDutyCycle(fan FanCh, dutyCycle uint8) error {
+	// basically this clear the channel settings and turn off the fan
+	if dutyCycle == 0 {
+		return cp.SetFanMode(fan, FanModeUnknown)
+	}
+
+	fanMode, err := cp.GetFanMode(fan)
+	if err != nil {
+		return err
+	}
+	if fanMode == FanModeUnknown {
+		if err := cp.SetFanMode(fan, FanModeAutoDisconnected); err != nil {
+			return err
+		}
+	}
+
+	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
+	cmd[0] = byte(CMDSetFanFixedDutyCycle)
+	cmd[1] = byte(fan)
+	cmd[2] = dutyCycle
+
+	_, err = cp.cmd(cmd)
+	return err
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
 func (cp *CommanderPro) GetChannelRPM(fan FanCh) (rpm uint16, err error) {
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
 	cmd[0] = byte(CMDGetFanRPM)
@@ -56,50 +108,18 @@ func (cp *CommanderPro) GetChannelRPM(fan FanCh) (rpm uint16, err error) {
 	return binary.BigEndian.Uint16(resp[1:3]), nil
 }
 
-// TMI fanController interface implementation --------------------------------------------------------------------------
-
-func (cp *CommanderPro) GetChannelDutyCycle(fan uint8) (dutyCycle uint8, err error) {
-	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
-	cmd[0] = byte(CMDGetFanFixedDutyCycle)
-	cmd[1] = fan
-
-	resp, err := cp.cmd(cmd)
-	return resp[1], err
-}
-
-// fanController interface implementation.
-func (cp *CommanderPro) SetChannelDutyCycle(fan uint8, dutyCycle uint8) error {
-	if dutyCycle == 0 {
-		return cp.SetFanMode(FanCh(fan), FanModeUnknown)
-	}
-
-	if fanMode, err := cp.GetFanMode(FanCh(fan)); err != nil {
-		return err
-	} else if fanMode == FanModeUnknown {
-		if err := cp.SetFanMode(FanCh(fan), FanModeAutoDisconnected); err != nil {
-			return err
-		}
-	}
-
-	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
-	cmd[0] = byte(CMDSetFanFixedDutyCycle)
-	cmd[1] = fan
-	cmd[2] = dutyCycle
-
-	_, err := cp.cmd(cmd)
-	return err
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-
+//  "Fixed rpm" (rpm configuration request 0x24) 500
 func (cp *CommanderPro) SetChannelFixedRPM(fan FanCh, rpm uint16) error {
+	// basically this clear the channel settings and turn off the fan
 	if rpm == 0 {
 		return cp.SetFanMode(fan, FanModeUnknown)
 	}
 
-	if fanMode, err := cp.GetFanMode(fan); err != nil {
+	fanMode, err := cp.GetFanMode(fan)
+	if err != nil {
 		return err
-	} else if fanMode == FanModeUnknown {
+	}
+	if fanMode == FanModeUnknown {
 		if err := cp.SetFanMode(fan, FanModeAutoDisconnected); err != nil {
 			return err
 		}
@@ -110,20 +130,50 @@ func (cp *CommanderPro) SetChannelFixedRPM(fan FanCh, rpm uint16) error {
 	cmd[1] = byte(fan)
 	binary.BigEndian.PutUint16(cmd[2:4], rpm)
 
-	_, err := cp.cmd(cmd)
+	_, err = cp.cmd(cmd)
 	return err
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+
+func (cp *CommanderPro) SetCustomCurve(fanCurves FanCurves) (err error) {
+	for fanCh, data := range fanCurves {
+		var tempsSlice = make([]uint16, 0)
+		for temp, _ := range data.Mapping {
+			tempsSlice = append(tempsSlice, temp)
+		}
+
+		sort.Slice(tempsSlice, func(i int, j int) bool {
+			return tempsSlice[i] < tempsSlice[j]
+		})
+
+		var temps [6]uint16
+		var rpms [6]uint16
+
+		for i, temp := range tempsSlice {
+			temps[i] = temp
+			rpms[i] = data.Mapping[temp]
+		}
+
+		if err = cp.SetFanMode(fanCh, FanMode4Pin); err != nil {
+			break
+		}
+
+		if err = cp.SetChannelCustomCurve(fanCh, data.Sensor, temps, rpms); err != nil {
+			break
+		}
+	}
+
+	return
+}
+
 // Modes are listed in this order (shown with default values)
-//"Default" (graph configuration request 0x25) 20 degC, 600 rpm ; 25 degC, 600 rpm ; 29 degC, 750 rpm ; 33 degC, 1000 rpm ; 37 degC, 1250 rpm ; 40 degC, 1500 rpm
-//"Quiet" (graph configuration request 0x25) (same points as in "Default" mode above)
-//"Balanced" (graph configuration request 0x25) 20 degC, 750 rpm ; 25 degC, 1000 rpm ; 29 degC, 1250 rpm ; 33 degC, 1500 rpm ; 37 degC, 1750 rpm ; 40 degC, 2000 rpm
-//"Performance" (graph configuration request 0x25) 20 degC, 1000 rpm ; 25 degC, 1250 rpm ; 29 degC, 1500 rpm ; 33 degC, 1750 rpm ; 37 degC, 2000 rpm ; 40 degC, 2500 rpm
-//"Custom" (graph configuration request 0x25) 20 degC, 600 rpm ; 30 degC, 600 rpm ; 40 degC, 750 rpm ; 50 degC, 1000 rpm ; 60 degC, 1250 rpm ; 70 degC, 1500 rpm
-//"Fixed %" (percent configuration request 0x23) 40%
-//"Fixed rpm" (rpm configuration request 0x24) 500
-//"Max" (percent configuration request) (100%)
-//Note that the default mode seems to be "Balanced".
+//  "Default" (graph configuration request 0x25) 20 degC, 600 rpm ; 25 degC, 600 rpm ; 29 degC, 750 rpm ; 33 degC, 1000 rpm ; 37 degC, 1250 rpm ; 40 degC, 1500 rpm
+//  "Quiet" (graph configuration request 0x25) (same points as in "Default" mode above)
+//  "Balanced" (graph configuration request 0x25) 20 degC, 750 rpm ; 25 degC, 1000 rpm ; 29 degC, 1250 rpm ; 33 degC, 1500 rpm ; 37 degC, 1750 rpm ; 40 degC, 2000 rpm
+//  "Performance" (graph configuration request 0x25) 20 degC, 1000 rpm ; 25 degC, 1250 rpm ; 29 degC, 1500 rpm ; 33 degC, 1750 rpm ; 37 degC, 2000 rpm ; 40 degC, 2500 rpm
+//  "Custom" (graph configuration request 0x25) 20 degC, 600 rpm ; 30 degC, 600 rpm ; 40 degC, 750 rpm ; 50 degC, 1000 rpm ; 60 degC, 1250 rpm ; 70 degC, 1500 rpm
+// Note that the default mode seems to be "Balanced".
 func (cp *CommanderPro) SetChannelCustomCurve(fan FanCh, tempSensor TempSensor, temps [6]uint16, rpms [6]uint16) error {
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
 	cmd[0] = byte(CMDSetFanCustomCurve)
@@ -132,8 +182,7 @@ func (cp *CommanderPro) SetChannelCustomCurve(fan FanCh, tempSensor TempSensor, 
 
 	for i, t := range temps {
 		idx := 3 + i*2
-		t = t * 100
-		binary.BigEndian.PutUint16(cmd[idx:idx+2], t)
+		binary.BigEndian.PutUint16(cmd[idx:idx+2], t*100)
 	}
 
 	for i, rpm := range rpms {
@@ -145,11 +194,11 @@ func (cp *CommanderPro) SetChannelCustomCurve(fan FanCh, tempSensor TempSensor, 
 	return err
 }
 
-// send to sensor? I don't think so... we send to a fan instead
-func (cp *CommanderPro) WriteFanExternalTemp(sensorIndex uint8, temp uint16) error {
+// send external temp measurement to a fanCh with a custom curve based on external temp
+func (cp *CommanderPro) WriteFanExternalTemp(fanCh FanCh, temp uint16) error {
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
 	cmd[0] = byte(CMDWriteFanExternalTemp)
-	cmd[1] = byte(sensorIndex)
+	cmd[1] = byte(fanCh)
 	binary.BigEndian.PutUint16(cmd[2:4], temp*100)
 
 	_, err := cp.cmd(cmd)

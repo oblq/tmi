@@ -1,4 +1,3 @@
-# 0 by default (auto)
 #fan_mode:
 #  0x00: 0x00
 #  0x01: 0x00
@@ -9,56 +8,54 @@
 
 # fixed duty cycles
 fixed_duty_cycles:
-  # front
-  2: 50
-  # rear
-  3: 40
+  # 0: 0
+  # 1: 0
+  2: 55 # front
+  3: 35 # rear
+  4: 50
+  5: 50
 
 # Define external temp extractors to be used in the configurations below.
 # method must be the name of a TMITempExtractor plugin.
 #  plugin: commanderpro, ipmi, cli
 #  arg: {commanderpro: sensor_channel (int), ipmi: entityID, cli: custom_command}
 external_temps:
-#  cpu:
-#    plugin: ipmi
-#    arg: 3.1
-#
-#  pch:
-#    plugin: ipmi
-#    arg: 7.1
-#
-#  gpu:
-#    plugin: cli
-#    arg: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
+  # cpu:
+  #   plugin: ipmi
+  #   arg: 3.1
 
-  water:
-    plugin: commanderpro
-    arg: 0
+  # pch:
+  #   plugin: ipmi
+  #   arg: 7.1
+
+  # gpu:
+  #   plugin: cli
+  #   arg: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
+
+  # water:
+  #   plugin: commanderpro
+  #   arg: 0
 
 ## set a custom fan duty-cycle curve, any set must have 6 temp/rpm mappings
 custom_curves:
-  # side
-  0:
+  0: # side
     sensor: 0
     mapping:
-      20: 750
-      23: 1000
-      26: 1250
-      29: 1500
-      32: 1750
+      20: 500
+      23: 600
+      26: 750
+      29: 950
+      32: 1500
       35: 2000
-  # top
-  1:
+  1: # top
     sensor: 0
     mapping:
-      20: 600
-      23: 700
-      26: 850
-      29: 1000
-      32: 1250
+      20: 500
+      23: 600
+      26: 750
+      29: 950
+      32: 1200
       35: 1400
-
-## Leds configuration --------------------------------------------------------------------------------------------------
 
 # Set led count per channel.
 led_count_per_ch:
@@ -71,8 +68,10 @@ led_count_per_ch:
 temp_shift_test:
   enabled: false
   ch: 0x01
-  from: 28
-  to: 50
+  from: 24
+  to: 36
+
+color1: &color {r: 0, g: 200, b: 50} #{r: 27, g: 133, b: 44}
 
 # Configure leds.
 led_group_configs:
@@ -85,29 +84,29 @@ led_group_configs:
     ledspeed: 0x01
     leddirection: 0x01
     ledstyle: 0x00
-    color1: {r: 27, g: 133, b: 44}
+    color1: *color
     color2: {r: 255, g: 127, b: 0}
     color3: {r: 255, g: 0, b: 0}
     temp1: 33
     temp2: 46
     temp3: 56
-    externaltemp: cpu
+    # externaltemp: cpu
 
   reservoir:
     ledch: 0x00
     ledoffset: 1
     ledcount: 1
-    ledmode: 0x05 # 0x05, 0x02, 0x03, 0x01, 0x04, 0x06
+    ledmode: 0x04 # 0x05, 0x02, 0x03, 0x01, 0x04, 0x06
     ledspeed: 0x01
     leddirection: 0x01
     ledstyle: 0x00
-    color1: {r: 27, g: 133, b: 44}
+    color1: *color 
     color2: {r: 255, g: 127, b: 0}
     color3: {r: 255, g: 0, b: 0}
-    temp1: 26
-    temp2: 31
+    temp1: 25
+    temp2: 30
     temp3: 35
-    externaltemp: water
+    # externaltemp: water
 
   front1:
     ledch: 0x00
@@ -117,13 +116,13 @@ led_group_configs:
     ledspeed: 0x01
     leddirection: 0x01
     ledstyle: 0x00
-    color1: {r: 27, g: 133, b: 44}
+    color1: *color
     color2: {r: 255, g: 127, b: 0}
     color3: {r: 255, g: 0, b: 0}
     temp1: 53
     temp2: 57
     temp3: 62
-    externaltemp: pch
+    # externaltemp: pch
 
   front2:
     ledch: 0x00
@@ -133,13 +132,13 @@ led_group_configs:
     ledspeed: 0x01
     leddirection: 0x01
     ledstyle: 0x00
-    color1: {r: 27, g: 133, b: 44}
+    color1: *color
     color2: {r: 255, g: 127, b: 0}
     color3: {r: 255, g: 0, b: 0}
     temp1: 53
     temp2: 57
     temp3: 62
-    externaltemp: pch
+    # externaltemp: pch
 
   gpu:
     ledch: 0x01
@@ -149,15 +148,14 @@ led_group_configs:
     ledspeed: 0x01
     leddirection: 0x01
     ledstyle: 0x00
-    color1: {r: 27, g: 133, b: 44}
+    color1: *color
     color2: {r: 255, g: 127, b: 0}
     color3: {r: 255, g: 0, b: 0}
     temp1: 33
     temp2: 45
     temp3: 55
-    externaltemp: gpu
+    # externaltemp: gpu
 
 # green {r: 27, g: 133, b: 44}
 # pink {r: 227, g: 33, b: 44}
 # yellow {r: 255, g: 127, b: 0}
-

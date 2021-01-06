@@ -5,6 +5,8 @@ import (
 	"strconv"
 )
 
+type TempSensor byte
+
 const (
 	CMDConnectedSensors cmd = 0x10 // CMDReadTemperatureMask
 	CMDGetTemp          cmd = 0x11 // CMDReadTemperatureValue

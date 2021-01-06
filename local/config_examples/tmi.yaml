@@ -1,0 +1,131 @@
+# Plugins to load.
+plugins:
+  - cli
+  - ipmi
+  - commanderpro
+
+# Number of seconds to sleep between checks.
+# Check configuration changes and sensors data every x seconds.
+check_interval: 3
+
+# Create a targets map to be used as reference inside the controllers configuration below.
+# <arbitrary_name>: <fan_controller>.<fan_controller_channel>
+targets_map:
+  pump: ipmi.0
+  side: commanderpro.0
+  top: commanderpro.1
+  front: commanderpro.2
+  rear: commanderpro.3
+
+controllers:
+
+  # name is arbitrary, will be printed in logs.
+  - name: Water
+    # The minimum change in °C from the last update to actually cause another fan speed change.
+    min_temp_change: 1
+    # IPMI sensor entityID to look for.
+    # Get the ipmi sensor entityID with: `sudo ipmitool sdr elist full` at the fourth column in result.
+    # ... or with: `sudo ipmitool sensor get <sensor_id>` (eg.: sudo ipmitool sensor get 'CPU Temp')
+    temp:
+      plugin: commanderpro
+      # commanderpro: sensor_channel (uint8 as string), ipmi: entityID, cli: custom_command
+      arg: 0x01
+    # Control multiple target zones with the same sensor...
+    targets:
+      pump:
+        0: 50
+        32: 88
+        35: 100
+      front:
+        0: 33
+        29: 44
+        32: 66
+        35: 100
+      side:
+        0: 33
+        29: 88
+        32: 100
+      top:
+        0: 33
+        29: 66
+        32: 88
+        35: 100
+
+  # name is arbitrary, will be printed in logs.
+  - name: CPU
+    # The minimum change in °C from the last update to actually cause another fan speed change.
+    min_temp_change: 3
+    # IPMI sensor entityID to look for.
+    # Get the ipmi sensor entityID with: `sudo ipmitool sdr elist full` at the fourth column in result.
+    # ... or with: `sudo ipmitool sensor get <sensor_id>` (eg.: sudo ipmitool sensor get 'CPU Temp')
+    temp:
+      plugin: ipmi
+      # commanderpro: sensor_channel (uint8 as string), ipmi: entityID, cli: custom_command
+      arg: 3.1
+    # Control multiple target zones with the same sensor...
+  #   targets:
+  #     pump:
+  #       0: 100
+  #       # 25: 38
+  #       # 36: 50
+  #       # 48: 72
+  #       # 60: 100
+  #     side:
+  #       0: 0
+  #       35: 35
+  #       45: 55
+  #       52: 75
+  #       60: 100
+  #     top:
+  #       0: 18
+  #       35: 45
+  #       45: 75
+  #       55: 100
+  #       60: 100
+
+  - name: GPU
+    min_temp_change: 2
+    # CLI command to extract NVIDIA GPU temp.
+    # Should return a string representing a valid float number,
+    # leading and trailing spaces will be automatically removed.
+    temp:
+      plugin: cli
+      arg: nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
+  #   targets:
+  #     pump:
+  #       0: 38
+  #       36: 50
+  #       48: 75
+  #       60: 100
+  #     side:
+  #       0: 0
+  #       35: 30
+  #       45: 50
+  #       52: 75
+  #       60: 100
+  #     top:
+  #       0: 18
+  #       35: 30
+  #       45: 50
+  #       52: 75
+  #       60: 100
+
+  - name: PCH
+    min_temp_change: 2
+    # temp_corsair_channel grab the temperature from a channel of the corsair commander pro
+    temp:
+      plugin: ipmi
+      arg: 7.1
+    targets:
+      front:
+        0: 34
+        48: 54
+        54: 100
+      side:
+        0: 22
+        48: 44
+        54: 100
+      rear:
+        0: 34
+        48: 44
+        54: 100

@@ -11,11 +11,92 @@ import (
 	"time"
 
 	"github.com/google/gousb"
+	"github.com/jessevdk/go-flags"
 	"gopkg.in/yaml.v3"
 )
 
-func main() {
+// Flags options: https://godoc.org/github.com/jessevdk/go-flags
+type Options struct {
+	// -c "my_config_path"
+	ConfigPath string `short:"c" long:"config" description:"Configuration file path"`
+}
 
+// the main func is not run in plugin mode, only when built as normal Go program
+func main() {
+	var opts Options
+	if _, err := flags.Parse(&opts); err != nil {
+		fmt.Println(err.Error())
+	}
+
+	// set the default path for config
+	if opts.ConfigPath == "" {
+		opts.ConfigPath = "/opt/tmi"
+	}
+
+	cp, err := Open()
+	if err != nil {
+		panic(err)
+	}
+
+	cp.ReadConfig(opts.ConfigPath)
+
+	ticker := time.NewTicker(time.Second * 2)
+	for range ticker.C {
+		temp1, err := cp.GetTempForSensor(TempSensor1)
+		if err != nil {
+			break
+		}
+
+		temp2, err := cp.GetTempForSensor(TempSensor2)
+		if err != nil {
+			break
+		}
+
+		temp3, err := cp.GetTempForSensor(TempSensor3)
+		if err != nil {
+			break
+		}
+
+		temp4, err := cp.GetTempForSensor(TempSensor4)
+		if err != nil {
+			break
+		}
+
+		dc1, err := cp.GetChannelRPM(FanCh1)
+		if err != nil {
+			break
+		}
+
+		dc2, err := cp.GetChannelRPM(FanCh2)
+		if err != nil {
+			break
+		}
+
+		dc3, err := cp.GetChannelRPM(FanCh3)
+		if err != nil {
+			break
+		}
+
+		dc4, err := cp.GetChannelRPM(FanCh4)
+		if err != nil {
+			break
+		}
+
+		dc5, err := cp.GetChannelRPM(FanCh5)
+		if err != nil {
+			break
+		}
+
+		dc6, err := cp.GetChannelRPM(FanCh6)
+		if err != nil {
+			break
+		}
+
+		fmt.Printf("Temps: 0: %.1f  1: %.1f  2: %.1f  3: %.1f     DutyCycles: 0: %d  1: %d  2: %d  3: %d  4: %d  5: %d \n",
+			temp1, temp2, temp3, temp4, dc1, dc2, dc3, dc4, dc5, dc6)
+
+		cp.ReadConfig(opts.ConfigPath)
+	}
 }
 
 // list all devices:
@@ -46,15 +127,6 @@ const (
 )
 
 type cmd byte
-type FanCh byte
-type FanMode byte
-type TempSensor byte
-
-type Color struct {
-	R uint8
-	G uint8
-	B uint8
-}
 
 type externalTempExtractor struct {
 	Plugin string
@@ -64,40 +136,32 @@ type externalTempExtractor struct {
 	lastTemp float64
 }
 
-type GroupConfig struct {
-	LedCh, LedOffset, LedCount, LedMode, LedSpeed, LedDirection, LedStyle uint8
-	Color1, Color2, Color3                                                Color
-	Temp1, Temp2, Temp3                                                   float64
-	ExternalTemp                                                          string
-}
-
-type TempTarget struct {
-	LedCh, LedOffset, LedCount uint8
+type tempTarget struct {
+	LedCh               LedCh
+	LedOffset, LedCount uint8
 }
 
 type Config struct {
-	FanMode map[uint8]uint8 `yaml:"fan_mode"`
+	FanMode map[FanCh]FanMode `yaml:"fan_mode"`
 
 	// method: commanderpro, ipmi, cli
 	// arg: {commanderpro: sensor_channel (int), ipmi: entityID, cli: custom_command}
 	ExternalTempExtractors map[string]*externalTempExtractor `yaml:"external_temps"`
 
-	LedCountPerCh map[uint8]uint8 `yaml:"led_count_per_ch"`
+	FixedDutyCycles map[FanCh]uint8 `yaml:"fixed_duty_cycles"`
+
+	CustomCurves FanCurves `yaml:"custom_curves"`
+
+	LedCountPerCh map[LedCh]uint8 `yaml:"led_count_per_ch"`
 
 	TempShiftTest struct {
 		Enabled bool
-		Ch      uint8
+		Ch      LedCh
 		From    float64
 		To      float64
 	} `yaml:"temp_shift_test"`
 
-	LedGroupConfigs map[string]GroupConfig `yaml:"led_group_configs"`
-}
-
-func Open() (cp *CommanderPro, err error) {
-	cp = &CommanderPro{}
-	err = cp.Open()
-	return
+	LedGroupConfigs map[string]LedGroupConfig `yaml:"led_group_configs"`
 }
 
 type CommanderPro struct {
@@ -145,7 +209,7 @@ func (cp *CommanderPro) Open() (err error) {
 	cp.intf, cp.intfDone, err = cp.dev.DefaultInterface()
 	if err != nil {
 		cp.ShutDown()
-		return fmt.Errorf("%s.DefaultInterface(): %v", cp.dev, err)
+		return fmt.Errorf("%s.DefaultInterface() error: %v", cp.dev, err)
 	}
 
 	//// Switch the configuration to #2.
@@ -200,6 +264,12 @@ func (cp *CommanderPro) cmd(cmd []byte) (response []byte, err error) {
 	return buf, nil
 }
 
+func Open() (cp *CommanderPro, err error) {
+	cp = &CommanderPro{}
+	err = cp.Open()
+	return
+}
+
 // pluggableModule interface implementation ----------------------------------------------------------------------------
 
 func Plugin() interface{} {
@@ -243,6 +313,20 @@ func (cp *CommanderPro) ReadConfig(configPath string) {
 
 		fmt.Println("commanderpro config updated")
 
+		if len(cp.config.FixedDutyCycles) > 0 {
+			for fanCh, dutyCycle := range cp.config.FixedDutyCycles {
+				if err := cp.SetChannelDutyCycle(fanCh, dutyCycle); err != nil {
+					fmt.Println(err.Error())
+					return
+				}
+			}
+		}
+
+		if err = cp.SetCustomCurve(cp.config.CustomCurves); err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+
 		for ch, ledCount := range cp.config.LedCountPerCh {
 			if err := cp.WriteLedCount(ch, ledCount); err != nil {
 				detailedErr := fmt.Errorf("error setting number of leds per channel: %d - %d -> %s", ch, ledCount, err.Error())
@@ -251,7 +335,7 @@ func (cp *CommanderPro) ReadConfig(configPath string) {
 			}
 		}
 
-		externalTempExtractors := make(map[*externalTempExtractor][]TempTarget)
+		externalTempExtractors := make(map[*externalTempExtractor][]tempTarget)
 
 		if cp.config.TempShiftTest.Enabled {
 			go cp.tempShift(cp.config.TempShiftTest.Ch, cp.config.TempShiftTest.From, cp.config.TempShiftTest.To)
@@ -294,9 +378,9 @@ func (cp *CommanderPro) ReadConfig(configPath string) {
 
 				}
 				if externalTempExtractors[tempExtractor] == nil {
-					externalTempExtractors[tempExtractor] = make([]TempTarget, 0)
+					externalTempExtractors[tempExtractor] = make([]tempTarget, 0)
 				}
-				tempTarget := TempTarget{LedCh: groupConfig.LedCh, LedOffset: groupConfig.LedOffset, LedCount: groupConfig.LedCount}
+				tempTarget := tempTarget{LedCh: groupConfig.LedCh, LedOffset: groupConfig.LedOffset, LedCount: groupConfig.LedCount}
 				externalTempExtractors[tempExtractor] = append(externalTempExtractors[tempExtractor], tempTarget)
 			}
 		}
@@ -350,7 +434,7 @@ func (cp *CommanderPro) ShutDown() {
 	}
 }
 
-func (cp *CommanderPro) monitorExternalTempIfNeeded(tempExtractors map[*externalTempExtractor][]TempTarget) {
+func (cp *CommanderPro) monitorExternalTempIfNeeded(tempExtractors map[*externalTempExtractor][]tempTarget) {
 	if cp.config.TempShiftTest.Enabled {
 		return
 	}
@@ -369,8 +453,6 @@ func (cp *CommanderPro) monitorExternalTempIfNeeded(tempExtractors map[*external
 		if cp.externalTempSetterTicker != nil {
 			cp.externalTempSetterTicker.Stop()
 		}
-
-		close(cp.getDone)
 
 		return
 	}

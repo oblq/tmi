@@ -5,6 +5,22 @@ import (
 	"time"
 )
 
+type LedCh byte
+
+type Color struct {
+	R uint8
+	G uint8
+	B uint8
+}
+
+type LedGroupConfig struct {
+	LedCh                                                          LedCh
+	LedOffset, LedCount, LedMode, LedSpeed, LedDirection, LedStyle uint8
+	Color1, Color2, Color3                                         Color
+	Temp1, Temp2, Temp3                                            float64
+	ExternalTemp                                                   string
+}
+
 const (
 	CMDReadLedStripMask     cmd = 0x30
 	CMDWriteLedRgbValue     cmd = 0x31
@@ -60,8 +76,8 @@ const (
 	CMDWriteLedCount      cmd = 0x3a
 	CMDWriteLedPortType   cmd = 0x3b // protocol
 
-	LedCh1 = 0x00
-	LedCh2 = 0x01
+	LedCh1 LedCh = 0x00
+	LedCh2 LedCh = 0x01
 
 	LedMode_RainbowWave = 0x00
 	LedMode_ColorShift  = 0x01
@@ -141,15 +157,15 @@ func (cp *CommanderPro) Clear(ch uint8) (err error) {
 	return
 }
 
-func (cp *CommanderPro) WriteLedGroupSet(ledCh, offset, len, ledMode, ledSpeed, ledDirection, ledStyle uint8,
+func (cp *CommanderPro) WriteLedGroupSet(ledCh LedCh, offset, len, ledMode, ledSpeed, ledDirection, ledStyle uint8,
 	color1, color2, color3 Color,
 	temp1, temp2, temp3 float64) (err error) {
 
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
 	cmd[0] = byte(CMDWriteLedGroupSet)
-	cmd[1] = ledCh
-	cmd[2] = offset // led index
-	cmd[3] = len    // leds count
+	cmd[1] = byte(ledCh)
+	cmd[2] = offset // led index ...or: Byte 2 is the strip/fan number where 0x00 => Strip/Fan 1, 0x0A => Strip/Fan 2, 0x14 => Strip/Fan 3, 0x1E => Strip/Fan 4
+	cmd[3] = len    // leds count ...or: Byte 3 is the type of LED, 0x0A => "RGB LED Strip", 0x0C => "RGB HD Fan", 0x01 => "RGB SP Fan", 0x04 => "RGB ML Fan"
 	cmd[4] = ledMode
 	cmd[5] = ledSpeed
 	cmd[6] = ledDirection
@@ -171,9 +187,9 @@ func (cp *CommanderPro) WriteLedGroupSet(ledCh, offset, len, ledMode, ledSpeed, 
 	}
 
 	if ledMode == LedMode_Temperature {
+		binary.BigEndian.PutUint16(cmd[18:20], uint16(temp1*100))
 		binary.BigEndian.PutUint16(cmd[20:22], uint16(temp2*100))
 		binary.BigEndian.PutUint16(cmd[22:24], uint16(temp3*100))
-		binary.BigEndian.PutUint16(cmd[18:20], uint16(temp1*100))
 	}
 
 	_, err = cp.cmd(cmd)
@@ -183,10 +199,10 @@ func (cp *CommanderPro) WriteLedGroupSet(ledCh, offset, len, ledMode, ledSpeed, 
 	return cp.save()
 }
 
-func (cp *CommanderPro) ClearGroup(ch uint8) (err error) {
+func (cp *CommanderPro) ClearGroup(ch LedCh) (err error) {
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
 	cmd[0] = byte(CMDWriteLedGroupsClear)
-	cmd[1] = ch
+	cmd[1] = byte(ch)
 
 	_, err = cp.cmd(cmd)
 	return
@@ -200,10 +216,10 @@ func (cp *CommanderPro) ClearGroup(ch uint8) (err error) {
 //    commands[2] = ctrl->channel;
 //    commands[3] = 0x0A;
 //    commands[4] = 0x28;
-func (cp *CommanderPro) WriteLedExternalTemp(ledCh, groupOffset uint8, temp float64) (err error) {
+func (cp *CommanderPro) WriteLedExternalTemp(ledCh LedCh, groupOffset uint8, temp float64) (err error) {
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
 	cmd[0] = byte(CMDWriteLedExternalTemp)
-	cmd[1] = ledCh
+	cmd[1] = byte(ledCh)
 	cmd[2] = groupOffset //0x00
 	binary.BigEndian.PutUint16(cmd[3:5], uint16(temp*100))
 
@@ -215,10 +231,10 @@ func (cp *CommanderPro) WriteLedExternalTemp(ledCh, groupOffset uint8, temp floa
 }
 
 // brightness is 0-100
-func (cp *CommanderPro) WriteLedBrightness(ledCh uint8, brightness uint8) (err error) {
+func (cp *CommanderPro) WriteLedBrightness(ledCh LedCh, brightness uint8) (err error) {
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
 	cmd[0] = byte(CMDWriteLedBrightness)
-	cmd[1] = ledCh
+	cmd[1] = byte(ledCh)
 	cmd[2] = brightness
 
 	_, err = cp.cmd(cmd)
@@ -228,10 +244,10 @@ func (cp *CommanderPro) WriteLedBrightness(ledCh uint8, brightness uint8) (err e
 	return cp.save()
 }
 
-func (cp *CommanderPro) WriteLedCount(ledCh uint8, count uint8) (err error) {
+func (cp *CommanderPro) WriteLedCount(ledCh LedCh, count uint8) (err error) {
 	cmd := make([]byte, cp.outEndpoint.Desc.MaxPacketSize)
 	cmd[0] = byte(CMDWriteLedCount)
-	cmd[1] = ledCh
+	cmd[1] = byte(ledCh)
 	cmd[2] = count
 
 	_, err = cp.cmd(cmd)
@@ -244,7 +260,7 @@ func (cp *CommanderPro) WriteLedCount(ledCh uint8, count uint8) (err error) {
 // ---------------------------------------------------------------------------------------------------------------------
 
 // Simulate a temperature shift from min to max and vice versa.
-func (cp *CommanderPro) tempShift(ch uint8, from, to float64) {
+func (cp *CommanderPro) tempShift(ch LedCh, from, to float64) {
 	i := from
 
 	if from < to {
