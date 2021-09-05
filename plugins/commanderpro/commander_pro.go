@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Flags options: https://godoc.org/github.com/jessevdk/go-flags
+// Options is Flags options: https://godoc.org/github.com/jessevdk/go-flags
 type Options struct {
 	// -c "my_config_path"
 	ConfigPath string `short:"c" long:"config" description:"Configuration file path"`
